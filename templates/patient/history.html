@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Booking History — MedRush{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h3 class="section-title mb-1">Booking History</h3>
+  <p class="text-muted mb-4">All your past and current ambulance requests.</p>
+
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-clean mb-0">
+        <thead>
+          <tr><th>#</th><th>Date</th><th>Type</th><th>Address</th><th>Ambulance</th><th>Status</th><th>Rating</th><th>Completed</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for b in bookings %}
+          {% set et = EMERGENCY_TYPES.get(b.emergency_type) %}
+          <tr>
+            <td>#{{ b.id }}</td>
+            <td>{{ b.created_at.strftime('%d %b %Y, %H:%M') }}</td>
+            <td>{% if et %}<span class="tag tag-{{ et.color }}">{{ et.label }}</span>{% endif %}</td>
+            <td>{{ b.address or 'GPS location' }}</td>
+            <td>{{ b.ambulance.vehicle_number if b.ambulance else '—' }}</td>
+            <td><span class="badge-status badge-{{ b.status }}">{{ b.status.replace('_',' ') }}</span></td>
+            <td>{% if b.rating %}<span class="star-rating-display small">{% for i in range(1,6) %}<i class="bi {{ 'bi-star-fill' if i <= b.rating else 'bi-star' }}"></i>{% endfor %}</span>{% else %}—{% endif %}</td>
+            <td>{{ b.completed_at.strftime('%d %b %Y, %H:%M') if b.completed_at else '—' }}</td>
+            <td><a href="{{ url_for('patient_track', booking_id=b.id) }}" class="small text-brand text-decoration-none">Details</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" class="text-center text-muted py-4">No bookings yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

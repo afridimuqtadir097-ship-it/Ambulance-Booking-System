@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard — MedRush{% endblock %}
+{% block content %}
+<div class="container py-4">
+
+  <div class="mb-4">
+    <h3 class="section-title mb-1">Fleet Overview</h3>
+    <p class="text-muted mb-0">Real-time snapshot of MedRush operations.</p>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+      <div class="stat-card h-100">
+        <div class="d-flex align-items-center gap-3 mb-1">
+          <span class="stat-icon" style="background: var(--brand-light); color: var(--brand-dark);"><i class="bi bi-truck"></i></span>
+          <div class="stat-value">{{ stats.total_ambulances }}</div>
+        </div>
+        <div class="stat-label">Total ambulances</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="stat-card h-100">
+        <div class="d-flex align-items-center gap-3 mb-1">
+          <span class="stat-icon" style="background:#dff3ea; color:#0e7a53;"><i class="bi bi-check-circle"></i></span>
+          <div class="stat-value">{{ stats.available_ambulances }}</div>
+        </div>
+        <div class="stat-label">Available now</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="stat-card h-100">
+        <div class="d-flex align-items-center gap-3 mb-1">
+          <span class="stat-icon" style="background:#fff4d6; color:#8a6400;"><i class="bi bi-lightning-charge"></i></span>
+          <div class="stat-value">{{ stats.busy_ambulances }}</div>
+        </div>
+        <div class="stat-label">On a trip</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="stat-card h-100">
+        <div class="d-flex align-items-center gap-3 mb-1">
+          <span class="stat-icon" style="background:#eceef3; color:#616b7d;"><i class="bi bi-power"></i></span>
+          <div class="stat-value">{{ stats.offline_ambulances }}</div>
+        </div>
+        <div class="stat-label">Offline</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+      <div class="stat-card h-100">
+        <div class="d-flex align-items-center gap-3 mb-1">
+          <span class="stat-icon" style="background:#e6f0ff; color:#1b53c4;"><i class="bi bi-person-heart"></i></span>
+          <div class="stat-value">{{ stats.total_patients }}</div>
+        </div>
+        <div class="stat-label">Registered patients</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="stat-card h-100">
+        <div class="d-flex align-items-center gap-3 mb-1">
+          <span class="stat-icon" style="background:#e6f0ff; color:#1b53c4;"><i class="bi bi-person-badge"></i></span>
+          <div class="stat-value">{{ stats.total_drivers }}</div>
+        </div>
+        <div class="stat-label">Registered drivers</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="stat-card h-100">
+        <div class="d-flex align-items-center gap-3 mb-1">
+          <span class="stat-icon" style="background: var(--brand-light); color: var(--brand-dark);"><i class="bi bi-journal-text"></i></span>
+          <div class="stat-value">{{ stats.active_bookings }}</div>
+        </div>
+        <div class="stat-label">Active bookings</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="stat-card h-100">
+        <div class="d-flex align-items-center gap-3 mb-1">
+          <span class="stat-icon" style="background:#dff3ea; color:#0e7a53;"><i class="bi bi-flag"></i></span>
+          <div class="stat-value">{{ stats.completed_bookings }}</div>
+        </div>
+        <div class="stat-label">Completed ({{ stats.total_bookings }} total)</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="stat-card h-100">
+        <div class="d-flex align-items-center gap-3 mb-1">
+          <span class="stat-icon" style="background:#fff0f6; color:#c4267a;"><i class="bi bi-star-fill"></i></span>
+          <div class="stat-value">{{ stats.avg_rating if stats.avg_rating else '—' }}</div>
+        </div>
+        <div class="stat-label">Average patient rating</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0">Recent Bookings</h5>
+    <a href="{{ url_for('admin_bookings') }}" class="small text-brand text-decoration-none">View all &rarr;</a>
+  </div>
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-clean mb-0">
+        <thead><tr><th>#</th><th>Patient</th><th>Type</th><th>Ambulance</th><th>Address</th><th>Status</th><th>Requested</th></tr></thead>
+        <tbody>
+          {% for b in recent_bookings %}
+          {% set et = EMERGENCY_TYPES.get(b.emergency_type) %}
+          <tr>
+            <td>#{{ b.id }}</td>
+            <td>{{ b.patient.name }}</td>
+            <td>{% if et %}<span class="tag tag-{{ et.color }}">{{ et.label }}</span>{% endif %}</td>
+            <td>{{ b.ambulance.vehicle_number if b.ambulance else '—' }}</td>
+            <td>{{ b.address or 'GPS location' }}</td>
+            <td><span class="badge-status badge-{{ b.status }}">{{ b.status.replace('_',' ') }}</span></td>
+            <td>{{ b.created_at.strftime('%d %b, %H:%M') }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-muted py-4">No bookings yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Manage Users — MedRush{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h3 class="section-title mb-1">Users</h3>
+  <p class="text-muted mb-4">All registered patients and drivers.</p>
+
+  <ul class="nav nav-tabs mb-3" id="userTabs">
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#patientsTab">Patients ({{ patients|length }})</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#driversTab">Drivers ({{ drivers|length }})</button></li>
+  </ul>
+
+  <div class="tab-content">
+    <div class="tab-pane fade show active" id="patientsTab">
+      <div class="card">
+        <div class="table-responsive">
+          <table class="table table-clean mb-0">
+            <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Joined</th></tr></thead>
+            <tbody>
+              {% for p in patients %}
+              <tr><td>{{ p.name }}</td><td>{{ p.email }}</td><td>{{ p.phone }}</td><td>{{ p.created_at.strftime('%d %b %Y') }}</td></tr>
+              {% else %}
+              <tr><td colspan="4" class="text-center text-muted py-4">No patients registered yet.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="tab-pane fade" id="driversTab">
+      <div class="card">
+        <div class="table-responsive">
+          <table class="table table-clean mb-0">
+            <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Vehicle</th><th>Type</th><th>Status</th></tr></thead>
+            <tbody>
+              {% for d in drivers %}
+              <tr>
+                <td>{{ d.name }}</td><td>{{ d.email }}</td><td>{{ d.phone }}</td>
+                <td>{{ d.ambulance.vehicle_number if d.ambulance else '—' }}</td>
+                <td>{% if d.ambulance %}<span class="tag {{ 'tag-purple' if d.ambulance.vehicle_type == 'ALS' else 'tag-blue' }}">{{ d.ambulance.vehicle_type }}</span>{% else %}—{% endif %}</td>
+                <td>{% if d.ambulance %}<span class="badge-status badge-{{ d.ambulance.status }}">{{ d.ambulance.status }}</span>{% else %}—{% endif %}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="6" class="text-center text-muted py-4">No drivers registered yet.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

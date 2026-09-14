@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}My Profile — MedRush{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h3 class="section-title mb-1">My Profile</h3>
+  <p class="text-muted mb-4">Manage your account details.</p>
+
+  <div class="row g-4">
+    <div class="col-lg-4">
+      <div class="card p-4 text-center">
+        <span class="avatar mx-auto mb-3" style="width:72px; height:72px; font-size:1.8rem;">{{ current_user.name[0]|upper }}</span>
+        <h5 class="mb-1">{{ current_user.name }}</h5>
+        <span class="tag tag-{{ 'purple' if current_user.role == 'admin' else ('blue' if current_user.role == 'driver' else 'pink') }} mx-auto">{{ current_user.role|capitalize }}</span>
+        <p class="text-muted small mt-3 mb-0">Member since {{ current_user.created_at.strftime('%d %b %Y') }}</p>
+        {% if current_user.role == 'driver' and current_user.ambulance %}
+        <hr>
+        <p class="text-muted small mb-0">Vehicle: <strong>{{ current_user.ambulance.vehicle_number }}</strong> ({{ current_user.ambulance.vehicle_type }})</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="col-lg-8">
+      <div class="card p-4 mb-4">
+        <h6 class="mb-3">Account Details</h6>
+        <form method="POST" action="{{ profile_action }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="form_type" value="details">
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Full Name</label>
+              <input type="text" name="name" class="form-control" value="{{ current_user.name }}" required>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Phone</label>
+              <input type="text" name="phone" class="form-control" value="{{ current_user.phone }}" required>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-control" value="{{ current_user.email }}" disabled>
+            <small class="text-muted">Email cannot be changed. Contact an administrator if this needs to update.</small>
+          </div>
+          <button type="submit" class="btn btn-brand">Save Changes</button>
+        </form>
+      </div>
+
+      <div class="card p-4">
+        <h6 class="mb-3">Change Password</h6>
+        <form method="POST" action="{{ profile_action }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="form_type" value="password">
+          <div class="mb-3">
+            <label class="form-label">Current Password</label>
+            <input type="password" name="current_password" class="form-control" required>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">New Password</label>
+              <input type="password" name="new_password" class="form-control" placeholder="At least 6 characters" required>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Confirm New Password</label>
+              <input type="password" name="confirm_password" class="form-control" required>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-outline-brand">Update Password</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

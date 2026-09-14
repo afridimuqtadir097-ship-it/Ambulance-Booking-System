@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} — MedRush{% endblock %}
+{% block content %}
+<div class="container text-center py-5 my-5">
+  <h1 class="display-3 fw-bold text-brand">{{ code }}</h1>
+  <p class="lead text-muted">{{ message }}</p>
+  <a href="{{ url_for('index') }}" class="btn btn-brand mt-3">Back to Home</a>
+</div>
+{% endblock %}

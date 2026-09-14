@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block title %}Book Ambulance — MedRush{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h3 class="section-title mb-1">Book an Ambulance</h3>
+  <p class="text-muted mb-4">Confirm your pickup location — we'll automatically dispatch the nearest available ambulance.</p>
+
+  <!-- Location gate: shown until we have a real GPS fix. The booking form below is not rendered until this is dismissed. -->
+  <div class="card p-5 text-center" id="locationGate">
+    <div id="gateDetecting">
+      <div class="spinner-border text-brand mb-3" role="status" style="width:2.5rem; height:2.5rem;"></div>
+      <h5 class="mb-1">Detecting your location...</h5>
+      <p class="text-muted mb-0">MedRush needs your GPS location to dispatch the nearest ambulance. Please allow the location permission prompt from your browser.</p>
+    </div>
+
+    <div id="gateError" class="d-none">
+      <i class="bi bi-geo-alt-fill fs-1 text-brand mb-2"></i>
+      <h5 class="mb-2" id="gateErrorTitle">We couldn't access your location</h5>
+      <p class="text-muted mb-3" id="gateErrorText">Location access is required to book an ambulance — this ensures the correct vehicle is dispatched to you.</p>
+      <button type="button" class="btn btn-brand px-4" id="retryLocationBtn"><i class="bi bi-arrow-clockwise me-2"></i>Try Again</button>
+      <p class="text-muted small mt-3 mb-0">
+        If you tapped "Block" or "Deny" earlier, you'll need to enable location access for this site in your browser's site settings (usually the padlock/info icon in the address bar) before retrying.
+      </p>
+    </div>
+
+    <div id="gateUnsupported" class="d-none">
+      <i class="bi bi-exclamation-triangle fs-1 text-brand mb-2"></i>
+      <h5 class="mb-2">Location isn't available</h5>
+      <p class="text-muted mb-0">Your browser doesn't support location services, or this page isn't loaded securely (GPS access requires HTTPS, except on localhost). Booking isn't possible without a location.</p>
+    </div>
+  </div>
+
+  <!-- Booking form: hidden until locationGate above is dismissed. -->
+  <div class="row g-4" id="bookingContent" style="display:none;">
+    <div class="col-lg-7">
+      <div class="card p-2">
+        <div class="map-box">
+          <div id="bookMap"></div>
+        </div>
+      </div>
+      <p class="small text-muted mt-2"><i class="bi bi-info-circle me-1"></i>Drag the red marker to fine-tune your exact pickup point.</p>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card p-4">
+        <form method="POST" action="{{ url_for('patient_book') }}" id="bookForm">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="lat" id="latInput">
+          <input type="hidden" name="lng" id="lngInput">
+
+          <div class="mb-3">
+            <label class="form-label">Type of Emergency</label>
+            <div class="emergency-picker">
+              {% for key, info in EMERGENCY_TYPES.items() %}
+              <div class="emergency-choice tag-{{ info.color }} {% if loop.first %}active{% endif %}" data-value="{{ key }}">
+                <input class="form-check-input d-none" type="radio" name="emergency_type" value="{{ key }}" id="em_{{ key }}" {% if loop.first %}checked{% endif %}>
+                <label for="em_{{ key }}" style="cursor:pointer; display:block;">{{ info.label }}</label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Pickup Address <span class="text-muted fw-normal">(optional label)</span></label>
+            <div class="input-group">
+              <input type="text" name="address" id="addressInput" class="form-control" placeholder="e.g. House 12, Street 4, Landi Kotal">
+              <button type="button" class="btn btn-outline-brand" id="useCurrentLocationBtn" title="Fill with my current location">
+                <i class="bi bi-crosshair" id="useCurrentLocationIcon"></i>
+              </button>
+            </div>
+            <small class="text-muted" id="addressHelpText">Tap the crosshair to auto-fill this from your device's current location.</small>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Notes for the driver <span class="text-muted fw-normal">(optional)</span></label>
+            <textarea name="notes" class="form-control" rows="3" placeholder="e.g. Patient has chest pain, second floor apartment"></textarea>
+          </div>
+
+          <div class="alert alert-light border small d-flex align-items-center gap-2" id="gpsStatus">
+            <i class="bi bi-geo-alt-fill text-success"></i> <span id="gpsStatusText">Location detected successfully.</span>
+          </div>
+
+          <button type="submit" class="btn btn-brand w-100 py-2" id="submitBtn">
+            <i class="bi bi-lightning-charge-fill me-2"></i>Request Ambulance Now
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.querySelectorAll('.emergency-choice').forEach(function (el) {
+  el.addEventListener('click', function () {
+    document.querySelectorAll('.emergency-choice').forEach(function (o) { o.classList.remove('active'); });
+    el.classList.add('active');
+    el.querySelector('input[type=radio]').checked = true;
+  });
+});
+
+let map;
+let marker;
+
+function setLocation(lat, lng) {
+  document.getElementById('latInput').value = lat;
+  document.getElementById('lngInput').value = lng;
+}
+
+function showBookingForm(lat, lng) {
+  document.getElementById('locationGate').style.display = 'none';
+  document.getElementById('bookingContent').style.display = '';
+
+  if (!map) {
+    map = L.map('bookMap');
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+      maxZoom: 19
+    }).addTo(map);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19
+    }).addTo(map);
+    marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+    marker.on('dragend', function () {
+      const pos = marker.getLatLng();
+      setLocation(pos.lat, pos.lng);
+    });
+  } else {
+    marker.setLatLng([lat, lng]);
+  }
+  map.setView([lat, lng], 15);
+  setTimeout(function () { map.invalidateSize(); }, 100);
+  setLocation(lat, lng);
+}
+
+function showGateState(state) {
+  document.getElementById('gateDetecting').classList.add('d-none');
+  document.getElementById('gateError').classList.add('d-none');
+  document.getElementById('gateUnsupported').classList.add('d-none');
+  document.getElementById(state).classList.remove('d-none');
+}
+
+function requestLocation() {
+  document.getElementById('locationGate').style.display = '';
+  document.getElementById('bookingContent').style.display = 'none';
+  showGateState('gateDetecting');
+
+  if (!navigator.geolocation) {
+    showGateState('gateUnsupported');
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    function (pos) {
+      showBookingForm(pos.coords.latitude, pos.coords.longitude);
+    },
+    function (err) {
+      let title = "We couldn't access your location";
+      let text = "Location access is required to book an ambulance — this ensures the correct vehicle is dispatched to you.";
+      if (err.code === err.PERMISSION_DENIED) {
+        title = "Location access denied";
+        text = "You denied the location permission request. Please allow location access for this site and try again.";
+      } else if (err.code === err.TIMEOUT) {
+        title = "Location request timed out";
+        text = "It took too long to get a GPS fix. Make sure location services are turned on for your device/browser and try again.";
+      } else if (err.code === err.POSITION_UNAVAILABLE) {
+        title = "Location unavailable";
+        text = "Your device couldn't determine a location right now. Check that GPS/location services are enabled and try again.";
+      }
+      document.getElementById('gateErrorTitle').textContent = title;
+      document.getElementById('gateErrorText').textContent = text;
+      showGateState('gateError');
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  );
+}
+
+document.getElementById('retryLocationBtn').addEventListener('click', requestLocation);
+
+function setAddressHelp(text, isError) {
+  const el = document.getElementById('addressHelpText');
+  el.textContent = text;
+  el.classList.toggle('text-danger', !!isError);
+  el.classList.toggle('text-muted', !isError);
+}
+
+document.getElementById('useCurrentLocationBtn').addEventListener('click', function () {
+  if (!navigator.geolocation) {
+    setAddressHelp("Your browser doesn't support location services.", true);
+    return;
+  }
+  const btn = document.getElementById('useCurrentLocationBtn');
+  const icon = document.getElementById('useCurrentLocationIcon');
+  btn.disabled = true;
+  icon.className = 'spinner-border spinner-border-sm';
+  setAddressHelp('Getting your current location...', false);
+
+  navigator.geolocation.getCurrentPosition(
+    function (pos) {
+      const lat = pos.coords.latitude, lng = pos.coords.longitude;
+
+      // Move the map pin to match, so the address label and the actual
+      // dispatch coordinates stay in sync.
+      if (map && marker) {
+        marker.setLatLng([lat, lng]);
+        map.setView([lat, lng], 15);
+      }
+      setLocation(lat, lng);
+
+      setAddressHelp('Looking up the address...', false);
+
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`)
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (data && data.display_name) {
+            document.getElementById('addressInput').value = data.display_name;
+            setAddressHelp('Address filled from your current location.', false);
+          } else {
+            setAddressHelp("Couldn't look up an address for this location. The map pin has still been updated — feel free to type a label manually.", true);
+          }
+        })
+        .catch(function () {
+          setAddressHelp("Couldn't look up an address right now. The map pin has still been updated — feel free to type a label manually.", true);
+        })
+        .finally(function () {
+          btn.disabled = false;
+          icon.className = 'bi bi-crosshair';
+        });
+    },
+    function (err) {
+      let text = "Couldn't access your location.";
+      if (err.code === err.PERMISSION_DENIED) text = 'Location access is denied for this site — enable it in your browser settings and try again.';
+      else if (err.code === err.TIMEOUT) text = 'Location request timed out — please try again.';
+      setAddressHelp(text, true);
+      btn.disabled = false;
+      icon.className = 'bi bi-crosshair';
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  );
+});
+
+requestLocation();
+</script>
+{% endblock %}

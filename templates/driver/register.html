@@ -1,0 +1,55 @@
+{% extends "auth_base.html" %}
+{% block title %}Driver Sign Up — MedRush{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="container">
+    <div class="card auth-card shadow-sm" style="max-width:520px;">
+      <div class="text-center mb-4">
+        <span class="brand-icon"><i class="bi bi-truck"></i></span>
+        <h3 class="mt-2 mb-1">Driver Registration</h3>
+        <p class="text-muted small mb-0">Join the MedRush ambulance fleet</p>
+      </div>
+      <form method="POST" action="{{ url_for('driver_register') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="mb-3">
+          <label class="form-label">Full Name</label>
+          <input type="text" name="name" class="form-control" placeholder="Muhammad Ali" required autofocus>
+        </div>
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Email</label>
+            <input type="email" name="email" class="form-control" placeholder="you@example.com" required>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Phone</label>
+            <input type="text" name="phone" class="form-control" placeholder="03XX-XXXXXXX" required>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Vehicle Number <span class="text-muted fw-normal">(optional)</span></label>
+          <input type="text" name="vehicle_number" class="form-control" placeholder="e.g. AMB-101">
+          <small class="text-muted">Leave blank to auto-generate. An admin can reassign vehicles later.</small>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Password</label>
+            <input type="password" name="password" class="form-control" placeholder="At least 6 characters" required>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Confirm Password</label>
+            <input type="password" name="confirm_password" class="form-control" placeholder="Re-enter password" required>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-brand w-100 py-2 mt-2">Create Driver Account</button>
+      </form>
+      <p class="text-center text-muted small mt-4 mb-0">
+        Already registered? <a href="{{ url_for('driver_login') }}" class="text-brand fw-semibold text-decoration-none">Log in</a>
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}

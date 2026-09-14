@@ -1,0 +1,27 @@
+{% extends "auth_base.html" %}
+{% block title %}Admin Log In — MedRush{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="container">
+    <div class="card auth-card shadow-sm">
+      <div class="text-center mb-4">
+        <span class="brand-icon"><i class="bi bi-speedometer2"></i></span>
+        <h3 class="mt-2 mb-1">Admin Log In</h3>
+        <p class="text-muted small mb-0">MedRush fleet management</p>
+      </div>
+      <form method="POST" action="{{ url_for('admin_login') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="mb-3">
+          <label class="form-label">Email address</label>
+          <input type="email" name="email" class="form-control" placeholder="you@example.com" required autofocus>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Password</label>
+          <input type="password" name="password" class="form-control" placeholder="••••••••" required>
+        </div>
+        <button type="submit" class="btn btn-brand w-100 py-2 mt-2">Log In</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

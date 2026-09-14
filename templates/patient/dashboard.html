@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — MedRush{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div>
+      <h3 class="section-title mb-1">Hi {{ current_user.name.split(' ')[0] }} 👋</h3>
+      <p class="text-muted mb-0">Here's your emergency booking overview.</p>
+    </div>
+    <a href="{{ url_for('patient_book') }}" class="btn btn-brand"><i class="bi bi-plus-circle me-2"></i>Book Ambulance</a>
+  </div>
+
+  {% if active_booking %}
+  <div class="card p-4 mb-4 border-0" style="background: var(--brand-light);">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+      <div>
+        <span class="badge-status badge-{{ active_booking.status }}">{{ active_booking.status.replace('_',' ') }}</span>
+        <h5 class="mt-2 mb-1">You have an active booking (#{{ active_booking.id }})</h5>
+        <p class="text-muted mb-0">Requested {{ active_booking.created_at.strftime('%d %b, %H:%M') }}</p>
+      </div>
+      <a href="{{ url_for('patient_track', booking_id=active_booking.id) }}" class="btn btn-brand">Track Now <i class="bi bi-arrow-right ms-1"></i></a>
+    </div>
+  </div>
+  {% else %}
+  <div class="card p-5 mb-4 text-center">
+    <i class="bi bi-shield-check fs-1 text-brand mb-2"></i>
+    <h5>No active booking</h5>
+    <p class="text-muted">You're all set. In case of an emergency, book an ambulance instantly.</p>
+    <div>
+      <a href="{{ url_for('patient_book') }}" class="btn btn-brand px-4">Book Ambulance Now</a>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0">Recent Bookings</h5>
+    <a href="{{ url_for('patient_history') }}" class="small text-brand text-decoration-none">View all &rarr;</a>
+  </div>
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-clean mb-0">
+        <thead><tr><th>#</th><th>Date</th><th>Type</th><th>Address</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          {% for b in recent %}
+          {% set et = EMERGENCY_TYPES.get(b.emergency_type) %}
+          <tr>
+            <td>#{{ b.id }}</td>
+            <td>{{ b.created_at.strftime('%d %b %Y, %H:%M') }}</td>
+            <td>{% if et %}<span class="tag tag-{{ et.color }}">{{ et.label }}</span>{% endif %}</td>
+            <td>{{ b.address or 'GPS location' }}</td>
+            <td><span class="badge-status badge-{{ b.status }}">{{ b.status.replace('_',' ') }}</span></td>
+            <td><a href="{{ url_for('patient_track', booking_id=b.id) }}" class="small text-brand text-decoration-none">Details</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-muted py-4">No bookings yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

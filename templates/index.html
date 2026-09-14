@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}MedRush — Online Ambulance Booking{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <div class="container">
+    <div class="row align-items-center g-5">
+      <div class="col-lg-6">
+        <span class="hero-badge mb-3"><i class="bi bi-lightning-charge-fill"></i> Real-time emergency dispatch</span>
+        <h1 class="mt-3 mb-3">Get an ambulance to your door in <span class="text-brand">one click.</span></h1>
+        <p class="lead">MedRush connects patients with the nearest available ambulance using live GPS tracking — no phone calls, no delays, just instant dispatch when every second matters.</p>
+        <div class="d-flex gap-3 mt-4 flex-wrap">
+          <a href="{{ url_for('register') }}" class="btn btn-brand btn-lg px-4"><i class="bi bi-plus-circle me-2"></i>Get Started</a>
+          <a href="{{ url_for('login') }}" class="btn btn-outline-brand btn-lg px-4">Log In</a>
+        </div>
+        <div class="d-flex gap-4 mt-5 flex-wrap">
+          <div><div class="fw-bold fs-4">24/7</div><div class="text-muted small">Emergency dispatch</div></div>
+          <div><div class="fw-bold fs-4">GPS</div><div class="text-muted small">Live tracking</div></div>
+          <div><div class="fw-bold fs-4">Auto</div><div class="text-muted small">Nearest-vehicle match</div></div>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="card p-4 shadow-sm">
+          <div class="d-flex align-items-center gap-3 mb-3">
+            <span class="feature-icon"><i class="bi bi-geo-alt-fill"></i></span>
+            <div>
+              <div class="fw-bold">Nearest ambulance found</div>
+              <div class="text-muted small">Vehicle AMB-002 &middot; 1.4 km away</div>
+            </div>
+          </div>
+          <div class="step-track">
+            <div class="step done"><div class="dot"><i class="bi bi-check-lg"></i></div><div class="label">Requested</div></div>
+            <div class="step current"><div class="dot">2</div><div class="label">En Route</div></div>
+            <div class="step"><div class="dot">3</div><div class="label">Arrived</div></div>
+          </div>
+          <div class="map-box mt-2">
+            <div style="height:220px; background: linear-gradient(135deg,#fdecee,#eef2ff); display:flex; align-items:center; justify-content:center;">
+              <span class="pulse-dot"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="py-5">
+  <div class="container py-4">
+    <h2 class="section-title text-center mb-2">Built for every second that matters</h2>
+    <p class="text-muted text-center mb-5">From the moment you tap request to the moment help arrives.</p>
+    <div class="row g-4">
+      <div class="col-md-4">
+        <div class="card p-4 h-100">
+          <span class="feature-icon mb-3"><i class="bi bi-lightning-charge-fill"></i></span>
+          <h5>Instant Dispatch</h5>
+          <p class="text-muted mb-0">One tap automatically finds and notifies the nearest available ambulance — no phone calls, no waiting on hold.</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card p-4 h-100">
+          <span class="feature-icon mb-3"><i class="bi bi-geo-alt-fill"></i></span>
+          <h5>Live GPS Tracking</h5>
+          <p class="text-muted mb-0">Watch your ambulance move toward you in real time on the map, with clear status updates at every step.</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card p-4 h-100">
+          <span class="feature-icon mb-3"><i class="bi bi-clock-history"></i></span>
+          <h5>Always Available</h5>
+          <p class="text-muted mb-0">Book anytime, day or night, and keep a complete history of every trip you've made.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="py-5 bg-brand-light">
+  <div class="container py-4 text-center">
+    <h2 class="section-title mb-3">Every second saved is a life protected.</h2>
+    <p class="text-muted mb-4">Join MedRush today and be ready before the emergency happens.</p>
+    <a href="{{ url_for('register') }}" class="btn btn-brand btn-lg px-5"><i class="bi bi-arrow-right-circle me-2"></i>Create your account</a>
+  </div>
+</section>
+
+{% endblock %}

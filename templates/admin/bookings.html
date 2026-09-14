@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Manage Bookings — MedRush{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h3 class="section-title mb-1">All Bookings</h3>
+  <p class="text-muted mb-4">Complete record of every ambulance request.</p>
+
+  <div class="d-flex gap-2 mb-3 flex-wrap">
+    <a href="{{ url_for('admin_bookings') }}" class="btn btn-sm {{ 'btn-brand' if not status_filter else 'btn-outline-brand' }}">All</a>
+    {% for s in ['pending','requested','accepted','enroute','completed','cancelled','no_ambulance'] %}
+    <a href="{{ url_for('admin_bookings', status=s) }}" class="btn btn-sm {{ 'btn-brand' if status_filter == s else 'btn-outline-brand' }}">{{ s.replace('_',' ')|capitalize }}</a>
+    {% endfor %}
+  </div>
+
+  <div class="card mb-4 p-3 d-flex flex-row align-items-center gap-2" style="background: var(--accent-blue-light); border: none;">
+    <i class="bi bi-tools fs-5" style="color:#1857c9;"></i>
+    <span class="small" style="color:#1857c9;"><strong>Testing tools:</strong> the "Simulate" buttons below act on behalf of the assigned driver, so you can test the full booking lifecycle from this one admin session without logging in separately as a driver.</span>
+  </div>
+
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-clean mb-0">
+        <thead><tr><th>#</th><th>Patient</th><th>Type</th><th>Ambulance</th><th>Address</th><th>Status</th><th>Rating</th><th>Requested</th><th></th></tr></thead>
+        <tbody>
+          {% for b in bookings %}
+          {% set et = EMERGENCY_TYPES.get(b.emergency_type) %}
+          <tr>
+            <td>#{{ b.id }}</td>
+            <td>{{ b.patient.name }}</td>
+            <td>{% if et %}<span class="tag tag-{{ et.color }}">{{ et.label }}</span>{% endif %}</td>
+            <td>{{ b.ambulance.vehicle_number if b.ambulance else '—' }}</td>
+            <td>{{ b.address or 'GPS location' }}</td>
+            <td><span class="badge-status badge-{{ b.status }}">{{ b.status.replace('_',' ') }}</span></td>
+            <td>{% if b.rating %}<span class="star-rating-display small">{% for i in range(1,6) %}<i class="bi {{ 'bi-star-fill' if i <= b.rating else 'bi-star' }}"></i>{% endfor %}</span>{% else %}—{% endif %}</td>
+            <td>{{ b.created_at.strftime('%d %b, %H:%M') }}</td>
+            <td class="text-nowrap">
+              {% if b.status == 'requested' %}
+              <form method="POST" action="{{ url_for('admin_simulate_accept', booking_id=b.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-brand">Simulate Accept</button>
+              </form>
+              <form method="POST" action="{{ url_for('admin_simulate_reject', booking_id=b.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger">Simulate Pass</button>
+              </form>
+              {% elif b.status == 'accepted' %}
+              <form method="POST" action="{{ url_for('admin_simulate_start', booking_id=b.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-brand">Simulate Start</button>
+              </form>
+              <form method="POST" action="{{ url_for('admin_simulate_complete', booking_id=b.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-brand">Simulate Complete</button>
+              </form>
+              {% elif b.status == 'enroute' %}
+              <form method="POST" action="{{ url_for('admin_simulate_complete', booking_id=b.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-brand">Simulate Complete</button>
+              </form>
+              {% else %}
+              <span class="text-muted small">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" class="text-center text-muted py-4">No bookings found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block title %}Driver Dashboard — MedRush{% endblock %}
+{% block content %}
+<div class="container py-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div>
+      <h3 class="section-title mb-1">Hi {{ current_user.name.split(' ')[0] }} 👋</h3>
+      {% if ambulance %}
+      <p class="text-muted mb-0">Vehicle <strong>{{ ambulance.vehicle_number }}</strong></p>
+      {% else %}
+      <p class="text-muted mb-0">No vehicle linked to your account yet.</p>
+      {% endif %}
+    </div>
+
+    {% if ambulance %}
+    <form method="POST" action="{{ url_for('driver_toggle_availability') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if ambulance.status == 'offline' %}
+        <button type="submit" class="btn btn-brand"><i class="bi bi-power me-2"></i>Go Online</button>
+      {% elif ambulance.status == 'available' %}
+        <button type="submit" class="btn btn-outline-brand"><i class="bi bi-pause-circle me-2"></i>Go Offline</button>
+      {% else %}
+        <span class="badge-status badge-busy fs-6"><i class="bi bi-truck me-1"></i>On a trip</span>
+      {% endif %}
+    </form>
+    {% endif %}
+  </div>
+
+  {% if not ambulance %}
+  <div class="card p-5 text-center">
+    <i class="bi bi-exclamation-triangle fs-1 text-brand mb-2"></i>
+    <h5>No ambulance linked</h5>
+    <p class="text-muted mb-0">Please contact an administrator to have a vehicle assigned to your account.</p>
+  </div>
+  {% else %}
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-4">
+      <div class="stat-card d-flex align-items-center gap-3">
+        <span class="stat-icon" style="background: var(--brand-light); color: var(--brand-dark);"><i class="bi bi-truck"></i></span>
+        <div>
+          <div class="stat-value">{{ ambulance.vehicle_number }}</div>
+          <div class="stat-label">Vehicle number</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="stat-card d-flex align-items-center gap-3">
+        <span class="stat-icon" style="background:#dff3ea; color:#0e7a53;"><i class="bi bi-broadcast"></i></span>
+        <div>
+          <div class="stat-value text-capitalize" id="statusValue">{{ ambulance.status }}</div>
+          <div class="stat-label">Current status</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="stat-card d-flex align-items-center gap-3">
+        <span class="stat-icon" style="background:#e6f0ff; color:#1b53c4;"><i class="bi bi-clock-history"></i></span>
+        <div>
+          <div class="stat-value">{{ history|length }}</div>
+          <div class="stat-label">Recent completed trips</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4 mb-4">
+    <div class="col-lg-7">
+      <div class="card p-2">
+        <div class="map-box"><div id="driverMap"></div></div>
+      </div>
+      <p class="small text-muted mt-2"><i class="bi bi-info-circle me-1"></i>Your live location is shared with patients automatically while you're online.</p>
+    </div>
+
+    <div class="col-lg-5">
+      {% if incoming %}
+      <div class="card p-4 mb-3 border-0" style="background: var(--brand-light);" id="incomingCard">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <span class="badge-status badge-requested">New request</span>
+          {% set et = EMERGENCY_TYPES.get(incoming.emergency_type) %}
+          {% if et %}<span class="tag tag-{{ et.color }}">{{ et.label }}</span>{% endif %}
+        </div>
+        <h5 class="mb-1">Emergency request #{{ incoming.id }}</h5>
+        <p class="text-muted mb-1"><i class="bi bi-geo-alt me-1"></i>{{ incoming.address or 'GPS location shared' }}</p>
+        {% if incoming.notes %}<p class="text-muted small mb-3"><i class="bi bi-chat-left-text me-1"></i>{{ incoming.notes }}</p>{% endif %}
+        <div class="d-flex gap-2 mt-2">
+          <form method="POST" action="{{ url_for('driver_accept', booking_id=incoming.id) }}" class="w-100">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-brand w-100"><i class="bi bi-check-lg me-1"></i>Accept</button>
+          </form>
+          <form method="POST" action="{{ url_for('driver_reject', booking_id=incoming.id) }}" class="w-100">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-danger w-100"><i class="bi bi-x-lg me-1"></i>Pass</button>
+          </form>
+        </div>
+      </div>
+      {% elif active %}
+      <div class="card p-4 mb-3">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <span class="badge-status badge-{{ active.status }}">{{ active.status.replace('_',' ') }}</span>
+          {% set et = EMERGENCY_TYPES.get(active.emergency_type) %}
+          {% if et %}<span class="tag tag-{{ et.color }}">{{ et.label }}</span>{% endif %}
+        </div>
+        <h5 class="mb-1">Active trip #{{ active.id }}</h5>
+        <p class="text-muted mb-3"><i class="bi bi-geo-alt me-1"></i>{{ active.address or 'GPS location shared' }}</p>
+        {% if active.notes %}<p class="text-muted small mb-3"><i class="bi bi-chat-left-text me-1"></i>{{ active.notes }}</p>{% endif %}
+        <div class="d-flex gap-2">
+          {% if active.status == 'accepted' %}
+          <form method="POST" action="{{ url_for('driver_start_trip', booking_id=active.id) }}" class="w-100">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-brand w-100"><i class="bi bi-play-fill me-1"></i>Start Trip</button>
+          </form>
+          {% endif %}
+          <form method="POST" action="{{ url_for('driver_complete', booking_id=active.id) }}" class="w-100" onsubmit="return confirm('Mark this trip as completed?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-brand w-100"><i class="bi bi-flag-fill me-1"></i>Complete Trip</button>
+          </form>
+        </div>
+      </div>
+      {% else %}
+      <div class="card p-5 text-center mb-3">
+        <i class="bi bi-shield-check fs-1 text-brand mb-2"></i>
+        <h5>No active requests</h5>
+        <p class="text-muted mb-0">
+          {% if ambulance.status == 'available' %}
+            You're online — new requests will appear here automatically.
+          {% elif ambulance.status == 'offline' %}
+            Go online to start receiving emergency requests.
+          {% else %}
+            Waiting for the next request.
+          {% endif %}
+        </p>
+      </div>
+      {% endif %}
+
+      <div class="card p-4">
+        <h6 class="mb-3">Recent Completed Trips</h6>
+        {% if history %}
+        <ul class="list-unstyled mb-0">
+          {% for h in history %}
+          <li class="d-flex justify-content-between align-items-center py-2 {% if not loop.last %}border-bottom{% endif %}">
+            <span class="small">#{{ h.id }} &middot; {{ h.address or 'GPS location' }}</span>
+            <span class="d-flex align-items-center gap-2">
+              {% if h.rating %}<span class="star-rating-display small">{% for i in range(1,6) %}<i class="bi {{ 'bi-star-fill' if i <= h.rating else 'bi-star' }}"></i>{% endfor %}</span>{% endif %}
+              <span class="small text-muted">{{ h.completed_at.strftime('%d %b, %H:%M') if h.completed_at else '—' }}</span>
+            </span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted small mb-0">No completed trips yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+{% if ambulance %}
+<script>
+const ambulanceStatus = "{{ ambulance.status }}";
+const startLat = {{ ambulance.lat or 34.0083 }};
+const startLng = {{ ambulance.lng or 71.5789 }};
+
+let map = L.map('driverMap').setView([startLat, startLng], 14);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+  maxZoom: 19
+}).addTo(map);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+  maxZoom: 19
+}).addTo(map);
+const driverIcon = L.divIcon({ className: '', html: '<div style="width:18px;height:18px;background:#e5384b;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 2px #e5384b;"></div>' });
+let driverMarker = L.marker([startLat, startLng], { icon: driverIcon }).addTo(map).bindPopup('You');
+
+function pushLocation(lat, lng) {
+  driverMarker.setLatLng([lat, lng]);
+  fetch('{{ url_for("driver_update_location") }}', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+    },
+    body: JSON.stringify({ lat, lng })
+  }).catch(() => {});
+}
+
+if (navigator.geolocation && ambulanceStatus !== 'offline') {
+  navigator.geolocation.getCurrentPosition((pos) => {
+    map.setView([pos.coords.latitude, pos.coords.longitude], 14);
+    pushLocation(pos.coords.latitude, pos.coords.longitude);
+  });
+  navigator.geolocation.watchPosition(
+    (pos) => pushLocation(pos.coords.latitude, pos.coords.longitude),
+    () => {},
+    { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+  );
+}
+
+// Poll for new incoming requests / active trip changes without a manual refresh.
+let knownIncomingId = {{ incoming.id if incoming else 'null' }};
+let knownActiveId = {{ active.id if active else 'null' }};
+
+function pollDashboard() {
+  fetch('{{ url_for("api_driver_dashboard_state") }}')
+    .then(r => r.json())
+    .then(data => {
+      if (!data.has_ambulance) return;
+      const incomingId = data.incoming ? data.incoming.id : null;
+      const activeId = data.active ? data.active.id : null;
+      if (incomingId !== knownIncomingId || activeId !== knownActiveId || data.status !== ambulanceStatus) {
+        location.reload();
+      }
+    })
+    .catch(() => {});
+}
+setInterval(pollDashboard, 5000);
+</script>
+{% endif %}
+{% endblock %}

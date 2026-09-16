@@ -19,6 +19,9 @@ env/
 # Cleanup/scratch files not meant for the repo
 _unused/
 
+# Test artifacts
+.pytest_cache/
+
 # IDE / OS
 .vscode/
 .idea/

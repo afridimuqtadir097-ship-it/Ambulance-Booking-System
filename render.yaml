@@ -12,3 +12,6 @@ services:
         value: "0"
       - key: PYTHON_VERSION
         value: 3.12.7
+      - key: ADMIN_PASSWORD
+        sync: false  # Render will prompt for this during setup instead of
+                     # using the insecure default -- see README's Security section.

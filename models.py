@@ -52,8 +52,8 @@ class Ambulance(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     vehicle_number = db.Column(db.String(30), unique=True, nullable=False)
     vehicle_type = db.Column(db.String(10), nullable=False, default="BLS")  # BLS or ALS, see VEHICLE_TYPES
-    driver_id = db.Column(db.Integer, db.ForeignKey("users.id"), unique=True, nullable=True)
-    status = db.Column(db.String(20), nullable=False, default="offline")  # available, busy, offline
+    driver_id = db.Column(db.Integer, db.ForeignKey("users.id"), unique=True, nullable=True, index=True)
+    status = db.Column(db.String(20), nullable=False, default="offline", index=True)  # available, busy, offline
     lat = db.Column(db.Float, nullable=True)
     lng = db.Column(db.Float, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -68,8 +68,8 @@ class Booking(db.Model):
     __tablename__ = "bookings"
 
     id = db.Column(db.Integer, primary_key=True)
-    patient_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    ambulance_id = db.Column(db.Integer, db.ForeignKey("ambulances.id"), nullable=True)
+    patient_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    ambulance_id = db.Column(db.Integer, db.ForeignKey("ambulances.id"), nullable=True, index=True)
 
     pickup_lat = db.Column(db.Float, nullable=False)
     pickup_lng = db.Column(db.Float, nullable=False)
@@ -78,7 +78,7 @@ class Booking(db.Model):
     emergency_type = db.Column(db.String(30), nullable=False, default="general")  # see EMERGENCY_TYPES
 
     # pending -> requested -> accepted -> enroute -> completed  (or cancelled / no_ambulance)
-    status = db.Column(db.String(20), nullable=False, default="pending")
+    status = db.Column(db.String(20), nullable=False, default="pending", index=True)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     accepted_at = db.Column(db.DateTime, nullable=True)
@@ -129,7 +129,7 @@ class Notification(db.Model):
     __tablename__ = "notifications"
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     message = db.Column(db.String(255), nullable=False)
     is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

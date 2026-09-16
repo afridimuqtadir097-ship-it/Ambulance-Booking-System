@@ -1,3 +1,4 @@
+import logging
 import math
 import os
 from datetime import datetime
@@ -5,6 +6,10 @@ from functools import wraps
 
 from flask import Flask, render_template, redirect, url_for, flash, request, jsonify, abort, session
 from flask_wtf import CSRFProtect
+from flask_wtf.csrf import CSRFError
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from sqlalchemy.exc import IntegrityError
 
 from config import Config
 from models import db, User, Ambulance, Booking, Notification, EMERGENCY_TYPES, VEHICLE_TYPES
@@ -14,6 +19,32 @@ app.config.from_object(Config)
 db.init_app(app)
 
 csrf = CSRFProtect(app)
+
+# Rate-limit brute-force-able endpoints (login/registration) by client IP.
+# In-memory storage is fine for a single-process deployment (e.g. Render's
+# free tier); see config.py's RATELIMIT_STORAGE_URI if you ever run more
+# than one worker process/instance and need limits shared across them.
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    storage_uri=app.config.get("RATELIMIT_STORAGE_URI", "memory://"),
+    default_limits=[],
+)
+
+# ---------------------------------------------------------------------------
+# Logging -- prints are fine for a quick script, but a real deployment needs
+# timestamped, leveled log output that a host's log viewer (e.g. Render's
+# logs tab) can filter on. Flask's own app.logger is a standard
+# `logging.Logger`; we just make sure it actually emits somewhere with a
+# useful format, since Flask only auto-attaches a handler when running its
+# own dev server -- not under gunicorn.
+if not app.logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter(
+        "[%(asctime)s] %(levelname)s in %(module)s: %(message)s"
+    ))
+    app.logger.addHandler(_handler)
+app.logger.setLevel(logging.DEBUG if app.config["DEBUG"] else logging.INFO)
 
 # Make these available in every template without passing them explicitly.
 app.jinja_env.globals["EMERGENCY_TYPES"] = EMERGENCY_TYPES
@@ -83,6 +114,19 @@ def admin_required(f):
 
 
 @app.context_processor
+def inject_pagination_helper():
+    def url_for_page(page):
+        """Build a link to the current view with only the `page` query
+        param changed, preserving everything else (e.g. ?status=... on the
+        admin bookings filter)."""
+        args = dict(request.view_args or {})
+        args.update(request.args.to_dict())
+        args["page"] = page
+        return url_for(request.endpoint, **args)
+    return {"url_for_page": url_for_page}
+
+
+@app.context_processor
 def inject_portal_identity():
     """Templates keep referencing `current_user` like before -- it now
     resolves to whichever portal's *own* session key matches the section of
@@ -128,6 +172,32 @@ def notify(user_id, message):
     db.session.add(Notification(user_id=user_id, message=message))
 
 
+def try_serve_waiting_booking(ambulance):
+    """Call this whenever an ambulance transitions to 'available' (a driver
+    goes online, a trip completes, a booking is cancelled/rejected). If any
+    booking is stuck in 'no_ambulance' status -- because nothing was free
+    when it was originally requested -- give the oldest one first claim on
+    this newly-freed vehicle, instead of leaving it to sit unresolved until
+    the patient notices and re-books manually."""
+    if ambulance.status != "available":
+        return
+    waiting = (
+        Booking.query.filter_by(status="no_ambulance")
+        .order_by(Booking.created_at.asc())
+        .all()
+    )
+    for booking in waiting:
+        if ambulance.id in booking.rejected_list():
+            continue
+        ambulance.status = "busy"
+        booking.ambulance_id = ambulance.id
+        booking.status = "requested"
+        if ambulance.driver_id:
+            notify(ambulance.driver_id, f"New emergency request #{booking.id} — please respond.")
+        db.session.commit()
+        return
+
+
 def dispatch_booking(booking):
     """Assign the nearest available ambulance to a pending booking."""
     ambulance = find_nearest_available_ambulance(
@@ -152,8 +222,8 @@ def validate_registration(name, email, phone, password, confirm):
         return "Please fill in all fields."
     if password != confirm:
         return "Passwords do not match."
-    if len(password) < 6:
-        return "Password must be at least 6 characters."
+    if len(password) < 8:
+        return "Password must be at least 8 characters."
     if User.query.filter_by(email=email).first():
         return "An account with this email already exists."
     return None
@@ -181,8 +251,8 @@ def handle_profile_update(user):
         confirm_pw = request.form.get("confirm_password", "")
         if not user.check_password(current_pw):
             flash("Current password is incorrect.", "danger")
-        elif len(new_pw) < 6:
-            flash("New password must be at least 6 characters.", "danger")
+        elif len(new_pw) < 8:
+            flash("New password must be at least 8 characters.", "danger")
         elif new_pw != confirm_pw:
             flash("New passwords do not match.", "danger")
         else:
@@ -203,6 +273,7 @@ def index():
 
 
 @app.route("/register", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def register():
     if get_current_patient():
         return redirect(url_for("patient_dashboard"))
@@ -230,6 +301,7 @@ def register():
 
 
 @app.route("/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def login():
     if get_current_patient():
         return redirect(url_for("patient_dashboard"))
@@ -270,6 +342,7 @@ def profile():
 # ---------------------------------------------------------------------------
 
 @app.route("/driver/register", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def driver_register():
     if get_current_driver():
         return redirect(url_for("driver_dashboard"))
@@ -306,6 +379,7 @@ def driver_register():
 
 
 @app.route("/driver/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
 def driver_login():
     if get_current_driver():
         return redirect(url_for("driver_dashboard"))
@@ -347,6 +421,7 @@ def driver_profile():
 # ---------------------------------------------------------------------------
 
 @app.route("/admin/login", methods=["GET", "POST"])
+@limiter.limit("5 per minute")
 def admin_login():
     if get_current_admin():
         return redirect(url_for("admin_dashboard"))
@@ -470,13 +545,16 @@ def patient_cancel(booking_id):
     booking = Booking.query.get_or_404(booking_id)
     if booking.patient_id != patient.id:
         abort(403)
-    if booking.status in ("pending", "requested", "accepted"):
-        if booking.ambulance:
-            booking.ambulance.status = "available"
-            if booking.ambulance.driver_id:
-                notify(booking.ambulance.driver_id, f"Booking #{booking.id} was cancelled by the patient.")
+    if booking.status in ("pending", "requested", "accepted", "no_ambulance"):
+        freed_ambulance = booking.ambulance
+        if freed_ambulance:
+            freed_ambulance.status = "available"
+            if freed_ambulance.driver_id:
+                notify(freed_ambulance.driver_id, f"Booking #{booking.id} was cancelled by the patient.")
         booking.status = "cancelled"
         db.session.commit()
+        if freed_ambulance:
+            try_serve_waiting_booking(freed_ambulance)
         flash("Booking cancelled.", "info")
     else:
         flash("This booking can no longer be cancelled.", "warning")
@@ -487,12 +565,13 @@ def patient_cancel(booking_id):
 @patient_required
 def patient_history():
     patient = get_current_patient()
-    bookings = (
+    page = request.args.get("page", 1, type=int)
+    pagination = (
         Booking.query.filter_by(patient_id=patient.id)
         .order_by(Booking.created_at.desc())
-        .all()
+        .paginate(page=page, per_page=15, error_out=False)
     )
-    return render_template("patient/history.html", bookings=bookings)
+    return render_template("patient/history.html", bookings=pagination.items, pagination=pagination)
 
 
 @app.route("/patient/rate/<int:booking_id>", methods=["POST"])
@@ -563,12 +642,14 @@ def driver_toggle_availability():
     if ambulance.status == "offline":
         ambulance.status = "available"
         flash("You are now online and available for requests.", "success")
+        db.session.commit()
+        try_serve_waiting_booking(ambulance)
     elif ambulance.status == "available":
         ambulance.status = "offline"
         flash("You are now offline.", "info")
+        db.session.commit()
     else:
         flash("You cannot change availability while on an active trip.", "warning")
-    db.session.commit()
     return redirect(url_for("driver_dashboard"))
 
 
@@ -625,6 +706,7 @@ def driver_reject(booking_id):
         flash("Request passed to the next nearest ambulance.", "info")
     else:
         flash("Request declined. No other ambulance is available right now.", "warning")
+    try_serve_waiting_booking(ambulance)
     return redirect(url_for("driver_dashboard"))
 
 
@@ -658,6 +740,7 @@ def driver_complete(booking_id):
     notify(booking.patient_id, "Your trip has been completed. Stay safe!")
     db.session.commit()
     flash("Trip completed successfully.", "success")
+    try_serve_waiting_booking(ambulance)
     return redirect(url_for("driver_dashboard"))
 
 
@@ -668,8 +751,8 @@ def driver_complete(booking_id):
 @app.route("/admin/dashboard")
 @admin_required
 def admin_dashboard():
-    rated = Booking.query.filter(Booking.rating.isnot(None)).all()
-    avg_rating = round(sum(b.rating for b in rated) / len(rated), 1) if rated else None
+    avg_rating_raw = db.session.query(db.func.avg(Booking.rating)).filter(Booking.rating.isnot(None)).scalar()
+    avg_rating = round(avg_rating_raw, 1) if avg_rating_raw is not None else None
 
     stats = {
         "total_patients": User.query.filter_by(role="patient").count(),
@@ -698,20 +781,36 @@ def admin_ambulances():
         vehicle_type = request.form.get("vehicle_type", "BLS")
         if vehicle_type not in VEHICLE_TYPES:
             vehicle_type = "BLS"
+
+        driver = User.query.filter_by(id=driver_id, role="driver").first() if driver_id else None
+
         if not vehicle_number:
             flash("Vehicle number is required.", "danger")
         elif Ambulance.query.filter_by(vehicle_number=vehicle_number).first():
             flash("A vehicle with this number already exists.", "danger")
+        elif driver_id and not driver:
+            flash("Selected driver could not be found.", "danger")
+        elif driver and driver.ambulance:
+            # Belt-and-suspenders: the dropdown is only ever populated with
+            # unassigned drivers, but a stale page or a direct POST could
+            # still submit a driver who already has a vehicle. Ambulance.driver_id
+            # is unique at the database level, so letting this through would
+            # otherwise crash the request with an unhandled IntegrityError.
+            flash(f"{driver.name} is already assigned to {driver.ambulance.vehicle_number}.", "danger")
         else:
             ambulance = Ambulance(
                 vehicle_number=vehicle_number,
                 vehicle_type=vehicle_type,
-                driver_id=int(driver_id) if driver_id else None,
+                driver_id=driver.id if driver else None,
                 status="offline",
             )
             db.session.add(ambulance)
-            db.session.commit()
-            flash("Ambulance added.", "success")
+            try:
+                db.session.commit()
+                flash("Ambulance added.", "success")
+            except IntegrityError:
+                db.session.rollback()
+                flash("Couldn't add that ambulance — please check the details and try again.", "danger")
         return redirect(url_for("admin_ambulances"))
 
     ambulances = Ambulance.query.order_by(Ambulance.id).all()
@@ -746,11 +845,14 @@ def admin_users():
 @admin_required
 def admin_bookings():
     status_filter = request.args.get("status")
+    page = request.args.get("page", 1, type=int)
     query = Booking.query
     if status_filter:
         query = query.filter_by(status=status_filter)
-    bookings = query.order_by(Booking.created_at.desc()).all()
-    return render_template("admin/bookings.html", bookings=bookings, status_filter=status_filter)
+    pagination = query.order_by(Booking.created_at.desc()).paginate(page=page, per_page=20, error_out=False)
+    return render_template(
+        "admin/bookings.html", bookings=pagination.items, pagination=pagination, status_filter=status_filter
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -793,6 +895,7 @@ def admin_simulate_reject(booking_id):
         flash(f"(Simulated) Passed to the next nearest ambulance ({new_ambulance.vehicle_number}).", "info")
     else:
         flash("(Simulated) Declined. No other ambulance is available right now.", "warning")
+    try_serve_waiting_booking(ambulance)
     return redirect(url_for("admin_bookings"))
 
 
@@ -819,11 +922,14 @@ def admin_simulate_complete(booking_id):
         return redirect(url_for("admin_bookings"))
     booking.status = "completed"
     booking.completed_at = datetime.utcnow()
-    if booking.ambulance:
-        booking.ambulance.status = "available"
+    freed_ambulance = booking.ambulance
+    if freed_ambulance:
+        freed_ambulance.status = "available"
     notify(booking.patient_id, "Your trip has been completed. Stay safe!")
     db.session.commit()
     flash(f"(Simulated) Booking #{booking.id} completed.", "success")
+    if freed_ambulance:
+        try_serve_waiting_booking(freed_ambulance)
     return redirect(url_for("admin_bookings"))
 
 
@@ -901,6 +1007,34 @@ def not_found(e):
     return render_template("error.html", code=404, message="Page not found."), 404
 
 
+@app.errorhandler(429)
+def rate_limited(e):
+    return render_template(
+        "error.html", code=429, message="Too many attempts. Please wait a moment and try again."
+    ), 429
+
+
+@app.errorhandler(CSRFError)
+def csrf_error(e):
+    return render_template(
+        "error.html", code=400,
+        message="Your session expired or the form was submitted incorrectly. Please go back and try again.",
+    ), 400
+
+
+@app.errorhandler(500)
+def internal_error(e):
+    # db.session may be left in a failed transaction state after an
+    # exception (e.g. a half-applied commit) -- roll it back so the *next*
+    # request on this worker starts from a clean session instead of also
+    # failing.
+    db.session.rollback()
+    app.logger.exception("Unhandled exception while processing %s %s", request.method, request.path)
+    return render_template(
+        "error.html", code=500, message="Something went wrong on our end. Please try again shortly.",
+    ), 500
+
+
 # ---------------------------------------------------------------------------
 # CLI: seed the database with a default admin + demo data
 # ---------------------------------------------------------------------------
@@ -909,32 +1043,50 @@ def seed_database():
     if User.query.filter_by(role="admin").first():
         return
 
-    admin = User(name="System Admin", email="admin@ambulanceapp.com", phone="0300-0000000", role="admin")
-    admin.set_password("admin123")
+    admin_email = app.config["ADMIN_EMAIL"]
+    admin_password = app.config["ADMIN_PASSWORD"]
+    admin = User(name="System Admin", email=admin_email, phone="0300-0000000", role="admin")
+    admin.set_password(admin_password)
     db.session.add(admin)
 
-    demo_drivers = [
-        ("Ali Khan", "ali.driver@ambulanceapp.com", "0301-1111111", "AMB-001", "ALS", 34.0083, 71.5789),
-        ("Bilal Ahmed", "bilal.driver@ambulanceapp.com", "0302-2222222", "AMB-002", "BLS", 34.0151, 71.5249),
-        ("Sara Malik", "sara.driver@ambulanceapp.com", "0303-3333333", "AMB-003", "BLS", 33.9990, 71.5429),
-    ]
-    for name, email, phone, vehicle, vehicle_type, lat, lng in demo_drivers:
-        driver = User(name=name, email=email, phone=phone, role="driver")
-        driver.set_password("driver123")
-        db.session.add(driver)
-        db.session.flush()
-        ambulance = Ambulance(
-            vehicle_number=vehicle, vehicle_type=vehicle_type, driver_id=driver.id,
-            status="available", lat=lat, lng=lng,
+    if admin_password == "admin123":
+        app.logger.warning(
+            "Seeding the admin account with the default password. Set the ADMIN_PASSWORD "
+            "environment variable to something private before this is reachable on the "
+            "public internet."
         )
-        db.session.add(ambulance)
 
-    patient = User(name="Demo Patient", email="patient@ambulanceapp.com", phone="0304-4444444", role="patient")
-    patient.set_password("patient123")
-    db.session.add(patient)
+    if app.config["SEED_DEMO_DATA"]:
+        demo_drivers = [
+            ("Ali Khan", "ali.driver@ambulanceapp.com", "0301-1111111", "AMB-001", "ALS", 34.0083, 71.5789),
+            ("Bilal Ahmed", "bilal.driver@ambulanceapp.com", "0302-2222222", "AMB-002", "BLS", 34.0151, 71.5249),
+            ("Sara Malik", "sara.driver@ambulanceapp.com", "0303-3333333", "AMB-003", "BLS", 33.9990, 71.5429),
+        ]
+        for name, email, phone, vehicle, vehicle_type, lat, lng in demo_drivers:
+            driver = User(name=name, email=email, phone=phone, role="driver")
+            driver.set_password("driver123")
+            db.session.add(driver)
+            db.session.flush()
+            ambulance = Ambulance(
+                vehicle_number=vehicle, vehicle_type=vehicle_type, driver_id=driver.id,
+                status="available", lat=lat, lng=lng,
+            )
+            db.session.add(ambulance)
 
-    db.session.commit()
-    print("Seeded database with default admin, 3 drivers, and 1 demo patient.")
+        patient = User(name="Demo Patient", email="patient@ambulanceapp.com", phone="0304-4444444", role="patient")
+        patient.set_password("patient123")
+        db.session.add(patient)
+
+    try:
+        db.session.commit()
+        app.logger.info("Seeded database with admin account%s.", " and demo data" if app.config["SEED_DEMO_DATA"] else "")
+    except IntegrityError:
+        # Another worker process seeded the database in the moment between
+        # our check above and this commit (e.g. gunicorn starting multiple
+        # workers at once, each running this at import time). That's fine --
+        # someone won the race, so just back off instead of crashing.
+        db.session.rollback()
+        app.logger.info("Database was already seeded by another process.")
 
 
 @app.cli.command("seed")

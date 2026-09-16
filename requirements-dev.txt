@@ -1,0 +1,8 @@
+# Only needed for running the test suite locally / in CI -- not required
+# to run the app itself, so it's kept separate from requirements.txt to
+# keep the production install lean.
+#
+#   pip install -r requirements.txt -r requirements-dev.txt
+#   pytest
+
+pytest>=7.4,<9

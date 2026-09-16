@@ -3,7 +3,15 @@
 {% block content %}
 <div class="auth-wrap">
   <div class="container">
-    <div class="card auth-card shadow-sm" style="max-width:520px;">
+    <div class="auth-split">
+      <div class="auth-visual d-none d-lg-flex" style="background-image: url('https://images.unsplash.com/photo-1782835431362-13ab0d03b572?auto=format&fit=crop&w=1000&q=80');">
+        <div class="auth-visual-content">
+          <span class="auth-visual-brand"><i class="bi bi-truck"></i> MedRush Drivers</span>
+          <h3>Be the difference.</h3>
+          <p>Join the fleet and start responding to emergencies with real-time dispatch on your side.</p>
+        </div>
+      </div>
+    <div class="card auth-card shadow-sm">
       <div class="text-center mb-4">
         <span class="brand-icon"><i class="bi bi-truck"></i></span>
         <h3 class="mt-2 mb-1">Driver Registration</h3>
@@ -49,6 +57,7 @@
       <p class="text-center text-muted small mt-4 mb-0">
         Already registered? <a href="{{ url_for('driver_login') }}" class="text-brand fw-semibold text-decoration-none">Log in</a>
       </p>
+    </div>
     </div>
   </div>
 </div>

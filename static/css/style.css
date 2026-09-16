@@ -232,6 +232,79 @@ h1, h2, h3, h4, h5, .brand-icon { font-weight: 700; }
 .role-choice input:checked + label,
 .role-choice.active { border-color: var(--brand); background: var(--brand-light); }
 
+/* Split-panel auth layout: a photo + tagline on one side, the form on the
+   other. The image panel is hidden below `lg` so mobile just sees the card. */
+.auth-split {
+  display: flex;
+  max-width: 940px;
+  margin: 0 auto;
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: var(--shadow-hover);
+  background: #fff;
+}
+.auth-visual {
+  flex: 1 1 44%;
+  position: relative;
+  background-size: cover;
+  background-position: center;
+  min-height: 580px;
+  color: #fff;
+  align-items: flex-end;
+}
+.auth-visual::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(190deg, rgba(20,15,30,0.18) 30%, rgba(15,12,25,0.88));
+}
+.auth-visual-content { position: relative; z-index: 1; padding: 2.3rem 2.1rem; }
+.auth-visual-brand {
+  display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 800; font-size: 1.1rem;
+  margin-bottom: 1.4rem; letter-spacing: -0.01em;
+}
+.auth-visual-brand i { font-size: 1.3rem; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.4)); }
+.auth-visual-content h3 { font-size: 1.5rem; font-weight: 800; line-height: 1.25; margin-bottom: 0.6rem; }
+.auth-visual-content p { color: rgba(255,255,255,0.85); font-size: 0.92rem; margin-bottom: 0; }
+.auth-split .auth-card {
+  flex: 1 1 56%;
+  max-width: none;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none !important;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+@media (max-width: 991.98px) {
+  .auth-split { box-shadow: none; border-radius: 0; }
+  .auth-split .auth-card { box-shadow: var(--shadow-soft) !important; border-radius: 18px; border: 1px solid var(--line); }
+}
+
+/* ---- Homepage photographic banner ---- */
+.impact-banner {
+  position: relative;
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  min-height: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.impact-banner::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(18,10,22,0.82), rgba(30,12,20,0.62));
+}
+.impact-content { position: relative; z-index: 1; }
+.impact-banner h2 { font-weight: 800; font-size: 2.3rem; }
+.impact-banner p { color: rgba(255,255,255,0.88); }
+@media (max-width: 768px) {
+  .impact-banner { background-attachment: scroll; min-height: 300px; }
+  .impact-banner h2 { font-size: 1.7rem; }
+}
+
 /* ---- Map ---- */
 .map-box { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); }
 #bookMap, #trackMap, #driverMap { height: 420px; width: 100%; }

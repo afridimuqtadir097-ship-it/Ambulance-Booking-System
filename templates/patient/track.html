@@ -38,6 +38,7 @@
           </div>
         </div>
         <div class="small text-muted"><i class="bi bi-telephone me-1"></i><span id="driverPhone">—</span></div>
+        <div class="small text-muted mt-1" id="distanceInfo" style="display:none;"><i class="bi bi-signpost-2 me-1"></i><span id="distanceValue"></span> away</div>
       </div>
 
       <div class="card p-4" id="waitingCard">
@@ -105,16 +106,37 @@ const bookingId = {{ booking.id }};
 const pickup = [{{ booking.pickup_lat }}, {{ booking.pickup_lng }}];
 
 let map = L.map('trackMap').setView(pickup, 14);
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-  attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+
+// Esri's satellite imagery doesn't have high-zoom coverage everywhere --
+// rural/remote areas can render as blank "Map data not yet available"
+// tiles. Offer OpenStreetMap's street layer (full global coverage) as a
+// one-click fallback via the layer switcher in the top-right of the map.
+const satelliteLayer = L.layerGroup([
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+    maxZoom: 19
+  }),
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19
+  })
+]).addTo(map);
+const streetsLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors',
   maxZoom: 19
-}).addTo(map);
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-  maxZoom: 19
-}).addTo(map);
+});
+L.control.layers({ 'Satellite': satelliteLayer, 'Streets': streetsLayer }).addTo(map);
 
 const pickupIcon = L.divIcon({ className: '', html: '<div style="width:16px;height:16px;background:#1a2233;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 2px #1a2233;"></div>' });
 L.marker(pickup, { icon: pickupIcon }).addTo(map).bindPopup('Pickup location');
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const toRad = (d) => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
 
 let ambulanceMarker = null;
 
@@ -142,6 +164,14 @@ function refresh() {
       badge.textContent = data.status.replace('_', ' ');
       badge.className = `badge-status badge-${data.status} fs-6`;
       updateSteps(data.status);
+
+      // Any flash banner on this page (e.g. "No ambulances available") was
+      // only accurate at the moment the page first loaded. Once live
+      // polling shows the booking has moved past that state, it's stale
+      // and actively misleading if left on screen -- clear it.
+      if (data.status !== 'no_ambulance' && data.status !== 'pending') {
+        document.querySelectorAll('.flash-container .alert').forEach(function (el) { el.remove(); });
+      }
 
       const waitingCard = document.getElementById('waitingCard');
       const driverCard = document.getElementById('driverCard');
@@ -179,6 +209,22 @@ function refresh() {
           }
           const bounds = L.latLngBounds([pickup, pos]);
           map.fitBounds(bounds, { padding: [40, 40] });
+
+          const distanceInfo = document.getElementById('distanceInfo');
+          if (['requested', 'accepted', 'enroute'].includes(data.status)) {
+            const km = haversineKm(pos[0], pos[1], pickup[0], pickup[1]);
+            const distanceValue = document.getElementById('distanceValue');
+            distanceValue.textContent = km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
+            distanceInfo.style.display = 'block';
+          } else {
+            // Trip is no longer active (completed/cancelled/etc.) -- a
+            // frozen "X away" reading from the last active poll makes no
+            // sense once the ride is over, so hide it explicitly rather
+            // than just never showing it again.
+            distanceInfo.style.display = 'none';
+          }
+        } else {
+          document.getElementById('distanceInfo').style.display = 'none';
         }
       } else {
         driverCard.style.display = 'none';

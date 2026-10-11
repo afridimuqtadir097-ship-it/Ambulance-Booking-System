@@ -1,9 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Manage Users — MedRush{% endblock %}
 {% block content %}
+<div class="page-banner page-banner-sm" style="background-image:url('https://images.unsplash.com/photo-1526628953301-3e589a6a8b74?auto=format&fit=crop&w=1600&q=80');">
+  <div class="container page-banner-content">
+    <h3 class="mb-1">Users</h3>
+    <p>All registered patients and drivers.</p>
+  </div>
+</div>
 <div class="container py-4">
-  <h3 class="section-title mb-1">Users</h3>
-  <p class="text-muted mb-4">All registered patients and drivers.</p>
 
   <ul class="nav nav-tabs mb-3" id="userTabs">
     <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#patientsTab">Patients ({{ patients|length }})</button></li>
@@ -12,15 +16,27 @@
 
   <div class="tab-content">
     <div class="tab-pane fade show active" id="patientsTab">
+      <div class="mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <input type="text" id="patientSearch" class="form-control form-control-sm" style="max-width:320px;" placeholder="Search patients by name, email, or phone…">
+        <button class="btn btn-brand btn-sm" data-bs-toggle="modal" data-bs-target="#addPatientModal"><i class="bi bi-person-plus me-2"></i>Add Patient</button>
+      </div>
       <div class="card">
         <div class="table-responsive">
           <table class="table table-clean mb-0">
-            <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Joined</th></tr></thead>
+            <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Joined</th><th></th></tr></thead>
             <tbody>
               {% for p in patients %}
-              <tr><td>{{ p.name }}</td><td>{{ p.email }}</td><td>{{ p.phone }}</td><td>{{ p.created_at.strftime('%d %b %Y') }}</td></tr>
+              <tr>
+                <td>{{ p.name }}</td><td>{{ p.email }}</td><td>{{ p.phone }}</td><td>{{ p.created_at.strftime('%d %b %Y') }}</td>
+                <td>
+                  <form method="POST" action="{{ url_for('admin_delete_patient', user_id=p.id) }}" onsubmit="return confirm('Remove {{ p.name }}? This also permanently deletes their booking history. This cannot be undone.');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                  </form>
+                </td>
+              </tr>
               {% else %}
-              <tr><td colspan="4" class="text-center text-muted py-4">No patients registered yet.</td></tr>
+              <tr><td colspan="5" class="text-center text-muted py-4">No patients registered yet.</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -28,10 +44,14 @@
       </div>
     </div>
     <div class="tab-pane fade" id="driversTab">
+      <div class="mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <input type="text" id="driverSearch" class="form-control form-control-sm" style="max-width:320px;" placeholder="Search drivers by name, email, or vehicle…">
+        <button class="btn btn-brand btn-sm" data-bs-toggle="modal" data-bs-target="#addDriverModal"><i class="bi bi-person-plus me-2"></i>Add Driver</button>
+      </div>
       <div class="card">
         <div class="table-responsive">
           <table class="table table-clean mb-0">
-            <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Vehicle</th><th>Type</th><th>Status</th></tr></thead>
+            <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Vehicle</th><th>Type</th><th>Status</th><th></th></tr></thead>
             <tbody>
               {% for d in drivers %}
               <tr>
@@ -39,15 +59,149 @@
                 <td>{{ d.ambulance.vehicle_number if d.ambulance else '—' }}</td>
                 <td>{% if d.ambulance %}<span class="tag {{ 'tag-purple' if d.ambulance.vehicle_type == 'ALS' else 'tag-blue' }}">{{ d.ambulance.vehicle_type }}</span>{% else %}—{% endif %}</td>
                 <td>{% if d.ambulance %}<span class="badge-status badge-{{ d.ambulance.status }}">{{ d.ambulance.status }}</span>{% else %}—{% endif %}</td>
+                <td>
+                  <form method="POST" action="{{ url_for('admin_delete_driver', user_id=d.id) }}" onsubmit="return confirm('Remove {{ d.name }}?{% if d.ambulance %} Their vehicle ({{ d.ambulance.vehicle_number }}) will be unassigned, not deleted.{% endif %} This cannot be undone.');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                  </form>
+                </td>
               </tr>
               {% else %}
-              <tr><td colspan="6" class="text-center text-muted py-4">No drivers registered yet.</td></tr>
+              <tr><td colspan="7" class="text-center text-muted py-4">No drivers registered yet.</td></tr>
               {% endfor %}
             </tbody>
           </table>
         </div>
       </div>
+      <p class="text-muted small mt-2"><i class="bi bi-info-circle me-1"></i>New drivers aren't linked to a vehicle yet — assign one from the <a href="{{ url_for('admin_ambulances') }}">Ambulances</a> page.</p>
     </div>
   </div>
 </div>
+
+<!-- Add Patient modal -->
+<div class="modal fade" id="addPatientModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('admin_add_patient') }}" class="admin-add-user-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header">
+          <h5 class="modal-title">Add New Patient</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Full Name</label>
+            <input type="text" name="name" class="form-control" placeholder="e.g. Fatima Bibi" required>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Email</label>
+              <input type="email" name="email" class="form-control" placeholder="you@example.com" required>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Phone</label>
+              <input type="text" name="phone" class="form-control" placeholder="03XX-XXXXXXX" required>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-2">
+              <label class="form-label">Password</label>
+              <input type="text" name="password" class="form-control pw-field" placeholder="At least 8 characters" required>
+            </div>
+            <div class="col-md-6 mb-2">
+              <label class="form-label">Confirm Password</label>
+              <input type="text" name="confirm_password" class="form-control pw-confirm-field" placeholder="Re-enter password" required>
+            </div>
+          </div>
+          <button type="button" class="btn btn-link btn-sm p-0 generate-pw-btn">Generate a random password</button>
+          <p class="text-muted small mt-2 mb-0">Share this password with the patient directly — they can change it later from their Profile page.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-brand">Create Patient Account</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Add Driver modal -->
+<div class="modal fade" id="addDriverModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('admin_add_driver') }}" class="admin-add-user-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header">
+          <h5 class="modal-title">Add New Driver</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Full Name</label>
+            <input type="text" name="name" class="form-control" placeholder="e.g. Hamid Gul" required>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Email</label>
+              <input type="email" name="email" class="form-control" placeholder="you@example.com" required>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Phone</label>
+              <input type="text" name="phone" class="form-control" placeholder="03XX-XXXXXXX" required>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-2">
+              <label class="form-label">Password</label>
+              <input type="text" name="password" class="form-control pw-field" placeholder="At least 8 characters" required>
+            </div>
+            <div class="col-md-6 mb-2">
+              <label class="form-label">Confirm Password</label>
+              <input type="text" name="confirm_password" class="form-control pw-confirm-field" placeholder="Re-enter password" required>
+            </div>
+          </div>
+          <button type="button" class="btn btn-link btn-sm p-0 generate-pw-btn">Generate a random password</button>
+          <p class="text-muted small mt-2 mb-0">This creates the driver's login only. Assign them a vehicle afterward from the Ambulances page.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-brand">Create Driver Account</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function makeTableFilter(inputId, tbodySelector) {
+  const input = document.getElementById(inputId);
+  const tbody = document.querySelector(tbodySelector);
+  if (!input || !tbody) return;
+  input.addEventListener('input', function () {
+    const q = input.value.trim().toLowerCase();
+    tbody.querySelectorAll('tr').forEach(function (row) {
+      row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+}
+makeTableFilter('patientSearch', '#patientsTab tbody');
+makeTableFilter('driverSearch', '#driversTab tbody');
+
+function randomPassword(length = 10) {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  const bytes = new Uint32Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => chars[b % chars.length]).join('');
+}
+
+document.querySelectorAll('.generate-pw-btn').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    const form = btn.closest('form');
+    const pw = randomPassword();
+    form.querySelector('.pw-field').value = pw;
+    form.querySelector('.pw-confirm-field').value = pw;
+  });
+});
+</script>
 {% endblock %}

@@ -1,10 +1,12 @@
+import csv
+import io
 import logging
 import math
 import os
 from datetime import datetime
 from functools import wraps
 
-from flask import Flask, render_template, redirect, url_for, flash, request, jsonify, abort, session
+from flask import Flask, render_template, redirect, url_for, flash, request, jsonify, abort, session, Response
 from flask_wtf import CSRFProtect
 from flask_wtf.csrf import CSRFError
 from flask_limiter import Limiter
@@ -272,6 +274,19 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/healthz")
+def healthz():
+    """Lightweight liveness check for uptime monitors and Render's health
+    checks -- confirms the app is up AND can actually reach the database,
+    rather than just that the process is running."""
+    try:
+        db.session.execute(db.text("SELECT 1"))
+        return jsonify({"status": "ok"}), 200
+    except Exception:
+        app.logger.exception("Health check failed")
+        return jsonify({"status": "error"}), 503
+
+
 @app.route("/register", methods=["GET", "POST"])
 @limiter.limit("10 per minute")
 def register():
@@ -475,7 +490,16 @@ def patient_dashboard():
         .limit(5)
         .all()
     )
-    return render_template("patient/dashboard.html", active_booking=active_booking, recent=recent)
+    stats = {
+        "total_bookings": Booking.query.filter_by(patient_id=patient.id).count(),
+        "completed_bookings": Booking.query.filter_by(patient_id=patient.id, status="completed").count(),
+        "member_since": patient.created_at,
+    }
+    nearby_available = Ambulance.query.filter_by(status="available").count()
+    return render_template(
+        "patient/dashboard.html", active_booking=active_booking, recent=recent, stats=stats,
+        nearby_available=nearby_available,
+    )
 
 
 @app.route("/patient/book", methods=["GET", "POST"])
@@ -614,11 +638,18 @@ def driver_dashboard():
     ambulance = driver.ambulance
     incoming = None
     active = None
+    avg_rating = None
     if ambulance:
         incoming = Booking.query.filter_by(ambulance_id=ambulance.id, status="requested").first()
         active = Booking.query.filter_by(ambulance_id=ambulance.id).filter(
             Booking.status.in_(["accepted", "enroute"])
         ).first()
+        avg_rating_raw = (
+            db.session.query(db.func.avg(Booking.rating))
+            .filter(Booking.ambulance_id == ambulance.id, Booking.rating.isnot(None))
+            .scalar()
+        )
+        avg_rating = round(avg_rating_raw, 1) if avg_rating_raw is not None else None
     history = []
     if ambulance:
         history = (
@@ -628,7 +659,8 @@ def driver_dashboard():
             .all()
         )
     return render_template(
-        "driver/dashboard.html", ambulance=ambulance, incoming=incoming, active=active, history=history
+        "driver/dashboard.html", ambulance=ambulance, incoming=incoming, active=active, history=history,
+        avg_rating=avg_rating,
     )
 
 
@@ -814,10 +846,41 @@ def admin_ambulances():
         return redirect(url_for("admin_ambulances"))
 
     ambulances = Ambulance.query.order_by(Ambulance.id).all()
-    unassigned_drivers = User.query.filter_by(role="driver").filter(
-        ~User.id.in_([a.driver_id for a in ambulances if a.driver_id])
-    ).all()
-    return render_template("admin/ambulances.html", ambulances=ambulances, unassigned_drivers=unassigned_drivers)
+    all_drivers = User.query.filter_by(role="driver").order_by(User.name).all()
+    unassigned_drivers = [d for d in all_drivers if not d.ambulance]
+    return render_template(
+        "admin/ambulances.html", ambulances=ambulances, unassigned_drivers=unassigned_drivers,
+        all_drivers=all_drivers,
+    )
+
+
+@app.route("/admin/ambulances/assign/<int:ambulance_id>", methods=["POST"])
+@admin_required
+def admin_assign_driver(ambulance_id):
+    ambulance = Ambulance.query.get_or_404(ambulance_id)
+    driver_id = request.form.get("driver_id") or None
+    driver = User.query.filter_by(id=driver_id, role="driver").first() if driver_id else None
+
+    if driver_id and not driver:
+        flash("Selected driver could not be found.", "danger")
+    elif driver and driver.ambulance and driver.ambulance.id != ambulance.id:
+        # Someone else grabbed this driver between page load and submit --
+        # the dropdown only offers valid choices, but re-check anyway since
+        # driver_id is unique at the database level.
+        flash(f"{driver.name} is already assigned to {driver.ambulance.vehicle_number}.", "danger")
+    else:
+        ambulance.driver_id = driver.id if driver else None
+        try:
+            db.session.commit()
+            flash(
+                f"{driver.name} assigned to {ambulance.vehicle_number}." if driver
+                else f"{ambulance.vehicle_number} is now unassigned.",
+                "success",
+            )
+        except IntegrityError:
+            db.session.rollback()
+            flash("Couldn't update the driver assignment — please try again.", "danger")
+    return redirect(url_for("admin_ambulances"))
 
 
 @app.route("/admin/ambulances/delete/<int:ambulance_id>", methods=["POST"])
@@ -841,6 +904,95 @@ def admin_users():
     return render_template("admin/users.html", patients=patients, drivers=drivers)
 
 
+@app.route("/admin/users/add_patient", methods=["POST"])
+@admin_required
+def admin_add_patient():
+    name = request.form.get("name", "").strip()
+    email = request.form.get("email", "").strip().lower()
+    phone = request.form.get("phone", "").strip()
+    password = request.form.get("password", "")
+    confirm = request.form.get("confirm_password", "")
+
+    error = validate_registration(name, email, phone, password, confirm)
+    if error:
+        flash(error, "danger")
+        return redirect(url_for("admin_users"))
+
+    user = User(name=name, email=email, phone=phone, role="patient")
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+    flash(f"Patient account created for {name}.", "success")
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/add_driver", methods=["POST"])
+@admin_required
+def admin_add_driver():
+    name = request.form.get("name", "").strip()
+    email = request.form.get("email", "").strip().lower()
+    phone = request.form.get("phone", "").strip()
+    password = request.form.get("password", "")
+    confirm = request.form.get("confirm_password", "")
+
+    error = validate_registration(name, email, phone, password, confirm)
+    if error:
+        flash(error, "danger")
+        return redirect(url_for("admin_users"))
+
+    user = User(name=name, email=email, phone=phone, role="driver")
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+    flash(f"Driver account created for {name}. Assign them a vehicle from the Ambulances page.", "success")
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/delete_patient/<int:user_id>", methods=["POST"])
+@admin_required
+def admin_delete_patient(user_id):
+    patient = User.query.filter_by(id=user_id, role="patient").first_or_404()
+
+    active = Booking.query.filter_by(patient_id=patient.id).filter(
+        Booking.status.in_(["pending", "requested", "accepted", "enroute"])
+    ).first()
+    if active:
+        flash(f"Can't remove {patient.name} — they have an active booking (#{active.id}) in progress.", "danger")
+        return redirect(url_for("admin_users"))
+
+    # Removing a patient also clears their booking history and
+    # notifications, since Booking.patient_id can't be left dangling.
+    Booking.query.filter_by(patient_id=patient.id).delete()
+    Notification.query.filter_by(user_id=patient.id).delete()
+    db.session.delete(patient)
+    db.session.commit()
+    flash(f"{patient.name} and their booking history have been removed.", "info")
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/delete_driver/<int:user_id>", methods=["POST"])
+@admin_required
+def admin_delete_driver(user_id):
+    driver = User.query.filter_by(id=user_id, role="driver").first_or_404()
+
+    if driver.ambulance and driver.ambulance.status == "busy":
+        flash(f"Can't remove {driver.name} — they're currently on an active trip.", "danger")
+        return redirect(url_for("admin_users"))
+
+    # The vehicle itself isn't deleted -- just unassigned, so past bookings
+    # made through it (and its own trip history) stay intact. Set it back
+    # offline too, since there's no driver left to have it online.
+    if driver.ambulance:
+        driver.ambulance.driver_id = None
+        driver.ambulance.status = "offline"
+
+    Notification.query.filter_by(user_id=driver.id).delete()
+    db.session.delete(driver)
+    db.session.commit()
+    flash(f"{driver.name} has been removed. Their vehicle is now unassigned.", "info")
+    return redirect(url_for("admin_users"))
+
+
 @app.route("/admin/bookings")
 @admin_required
 def admin_bookings():
@@ -852,6 +1004,48 @@ def admin_bookings():
     pagination = query.order_by(Booking.created_at.desc()).paginate(page=page, per_page=20, error_out=False)
     return render_template(
         "admin/bookings.html", bookings=pagination.items, pagination=pagination, status_filter=status_filter
+    )
+
+
+@app.route("/admin/bookings/export.csv")
+@admin_required
+def admin_bookings_export():
+    """Download the (optionally status-filtered) booking records as CSV --
+    handy for reporting, invoicing, or just keeping an offline record,
+    since the free-tier SQLite database resets on every deploy/restart."""
+    status_filter = request.args.get("status")
+    query = Booking.query
+    if status_filter:
+        query = query.filter_by(status=status_filter)
+    bookings = query.order_by(Booking.created_at.desc()).all()
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow([
+        "ID", "Patient", "Patient Email", "Emergency Type", "Status", "Ambulance", "Driver",
+        "Address", "Rating", "Requested At", "Accepted At", "Completed At",
+    ])
+    for b in bookings:
+        writer.writerow([
+            b.id,
+            b.patient.name if b.patient else "",
+            b.patient.email if b.patient else "",
+            EMERGENCY_TYPES.get(b.emergency_type, {}).get("label", b.emergency_type),
+            b.status,
+            b.ambulance.vehicle_number if b.ambulance else "",
+            b.ambulance.driver.name if b.ambulance and b.ambulance.driver else "",
+            b.address or "",
+            b.rating or "",
+            b.created_at.strftime("%Y-%m-%d %H:%M") if b.created_at else "",
+            b.accepted_at.strftime("%Y-%m-%d %H:%M") if b.accepted_at else "",
+            b.completed_at.strftime("%Y-%m-%d %H:%M") if b.completed_at else "",
+        ])
+
+    filename = f"medrush-bookings-{datetime.utcnow().strftime('%Y%m%d-%H%M')}.csv"
+    return Response(
+        buffer.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 

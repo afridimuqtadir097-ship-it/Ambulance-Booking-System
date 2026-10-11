@@ -1,9 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Manage Bookings — MedRush{% endblock %}
 {% block content %}
+<div class="page-banner page-banner-sm" style="background-image:url('https://images.unsplash.com/photo-1782835431461-8c0c5898b54b?auto=format&fit=crop&w=1600&q=80');">
+  <div class="container page-banner-content d-flex justify-content-between align-items-start flex-wrap gap-2">
+    <div>
+      <h3 class="mb-1">All Bookings</h3>
+      <p>Complete record of every ambulance request.</p>
+    </div>
+    <a href="{{ url_for('admin_bookings_export', status=status_filter) if status_filter else url_for('admin_bookings_export') }}" class="btn btn-light btn-sm">
+      <i class="bi bi-download me-1"></i>Export CSV
+    </a>
+  </div>
+</div>
 <div class="container py-4">
-  <h3 class="section-title mb-1">All Bookings</h3>
-  <p class="text-muted mb-4">Complete record of every ambulance request.</p>
 
   <div class="d-flex gap-2 mb-3 flex-wrap">
     <a href="{{ url_for('admin_bookings') }}" class="btn btn-sm {{ 'btn-brand' if not status_filter else 'btn-outline-brand' }}">All</a>

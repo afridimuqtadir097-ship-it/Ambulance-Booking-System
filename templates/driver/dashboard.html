@@ -1,15 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Driver Dashboard — MedRush{% endblock %}
 {% block content %}
-<div class="container py-4">
-
-  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+<div class="page-banner page-banner-sm" style="background-image:url('https://images.unsplash.com/photo-1782835431362-13ab0d03b572?auto=format&fit=crop&w=1600&q=80');">
+  <div class="container page-banner-content d-flex justify-content-between align-items-center flex-wrap gap-2">
     <div>
-      <h3 class="section-title mb-1">Hi {{ current_user.name.split(' ')[0] }} 👋</h3>
+      <h3 class="mb-1">Hi {{ current_user.name.split(' ')[0] }} 👋</h3>
       {% if ambulance %}
-      <p class="text-muted mb-0">Vehicle <strong>{{ ambulance.vehicle_number }}</strong></p>
+      <p>Vehicle <strong>{{ ambulance.vehicle_number }}</strong></p>
       {% else %}
-      <p class="text-muted mb-0">No vehicle linked to your account yet.</p>
+      <p>No vehicle linked to your account yet.</p>
       {% endif %}
     </div>
 
@@ -19,13 +18,15 @@
       {% if ambulance.status == 'offline' %}
         <button type="submit" class="btn btn-brand"><i class="bi bi-power me-2"></i>Go Online</button>
       {% elif ambulance.status == 'available' %}
-        <button type="submit" class="btn btn-outline-brand"><i class="bi bi-pause-circle me-2"></i>Go Offline</button>
+        <button type="submit" class="btn btn-light"><i class="bi bi-pause-circle me-2"></i>Go Offline</button>
       {% else %}
         <span class="badge-status badge-busy fs-6"><i class="bi bi-truck me-1"></i>On a trip</span>
       {% endif %}
     </form>
     {% endif %}
   </div>
+</div>
+<div class="container py-4">
 
   {% if not ambulance %}
   <div class="card p-5 text-center">
@@ -36,7 +37,7 @@
   {% else %}
 
   <div class="row g-3 mb-4">
-    <div class="col-md-4">
+    <div class="col-6 col-md-3">
       <div class="stat-card d-flex align-items-center gap-3">
         <span class="stat-icon" style="background: var(--brand-light); color: var(--brand-dark);"><i class="bi bi-truck"></i></span>
         <div>
@@ -45,7 +46,7 @@
         </div>
       </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-6 col-md-3">
       <div class="stat-card d-flex align-items-center gap-3">
         <span class="stat-icon" style="background:#dff3ea; color:#0e7a53;"><i class="bi bi-broadcast"></i></span>
         <div>
@@ -54,12 +55,21 @@
         </div>
       </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-6 col-md-3">
       <div class="stat-card d-flex align-items-center gap-3">
         <span class="stat-icon" style="background:#e6f0ff; color:#1b53c4;"><i class="bi bi-clock-history"></i></span>
         <div>
           <div class="stat-value">{{ history|length }}</div>
           <div class="stat-label">Recent completed trips</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card d-flex align-items-center gap-3">
+        <span class="stat-icon" style="background:#fff4e0; color:#b5760a;"><i class="bi bi-star-fill"></i></span>
+        <div>
+          <div class="stat-value">{{ avg_rating if avg_rating else '—' }}</div>
+          <div class="stat-label">Average rating</div>
         </div>
       </div>
     </div>
@@ -165,13 +175,20 @@ const startLat = {{ ambulance.lat or 34.0083 }};
 const startLng = {{ ambulance.lng or 71.5789 }};
 
 let map = L.map('driverMap').setView([startLat, startLng], 14);
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-  attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+const satelliteLayer = L.layerGroup([
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+    maxZoom: 19
+  }),
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19
+  })
+]).addTo(map);
+const streetsLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors',
   maxZoom: 19
-}).addTo(map);
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-  maxZoom: 19
-}).addTo(map);
+});
+L.control.layers({ 'Satellite': satelliteLayer, 'Streets': streetsLayer }).addTo(map);
 const driverIcon = L.divIcon({ className: '', html: '<div style="width:18px;height:18px;background:#e5384b;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 2px #e5384b;"></div>' });
 let driverMarker = L.marker([startLat, startLng], { icon: driverIcon }).addTo(map).bindPopup('You');
 

@@ -1,14 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — MedRush{% endblock %}
 {% block content %}
-<div class="container py-4">
-  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+<div class="page-banner" style="background-image:url('https://images.unsplash.com/photo-1758691462071-757bca955439?auto=format&fit=crop&w=1600&q=80');">
+  <div class="container page-banner-content d-flex justify-content-between align-items-center flex-wrap gap-3">
     <div>
-      <h3 class="section-title mb-1">Hi {{ current_user.name.split(' ')[0] }} 👋</h3>
-      <p class="text-muted mb-0">Here's your emergency booking overview.</p>
+      <h3 class="mb-1">Hi {{ current_user.name.split(' ')[0] }} 👋</h3>
+      <p>Here's your emergency booking overview.</p>
     </div>
-    <a href="{{ url_for('patient_book') }}" class="btn btn-brand"><i class="bi bi-plus-circle me-2"></i>Book Ambulance</a>
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+      <span class="small" style="color:rgba(255,255,255,0.9);">
+        <i class="bi bi-circle-fill text-success me-1" style="font-size:0.5rem;"></i>{{ nearby_available }} ambulance{{ 's' if nearby_available != 1 else '' }} available right now
+      </span>
+      <a href="{{ url_for('patient_book') }}" class="btn btn-brand"><i class="bi bi-plus-circle me-2"></i>Book Ambulance</a>
+    </div>
   </div>
+</div>
+<div class="container py-4">
 
   {% if active_booking %}
   <div class="card p-4 mb-4 border-0" style="background: var(--brand-light);">
@@ -22,21 +29,56 @@
     </div>
   </div>
   {% else %}
-  <div class="card p-5 mb-4 text-center">
-    <i class="bi bi-shield-check fs-1 text-brand mb-2"></i>
-    <h5>No active booking</h5>
-    <p class="text-muted">You're all set. In case of an emergency, book an ambulance instantly.</p>
-    <div>
-      <a href="{{ url_for('patient_book') }}" class="btn btn-brand px-4">Book Ambulance Now</a>
+  <div class="mb-4">
+    <h5 class="mb-3">What's the emergency?</h5>
+    {% set emergency_icons = {'accident': 'bi-exclamation-triangle-fill', 'cardiac': 'bi-heart-pulse-fill', 'breathing': 'bi-lungs-fill', 'maternity': 'bi-heart-fill', 'general': 'bi-bandaid-fill'} %}
+    <div class="emergency-picker quick-emergency-picker">
+      {% for key, info in EMERGENCY_TYPES.items() %}
+      <a href="{{ url_for('patient_book', type=key) }}" class="emergency-choice active tag-{{ info.color }} text-decoration-none d-block" style="color: inherit;">
+        <i class="bi {{ emergency_icons.get(key, 'bi-plus-circle-fill') }} d-block mb-1" style="font-size:1.3rem;"></i>
+        {{ info.label }}
+      </a>
+      {% endfor %}
     </div>
+    <p class="text-muted small mt-2 mb-0"><i class="bi bi-shield-check me-1"></i>Tap a category to jump straight into booking — we'll dispatch the nearest ambulance automatically.</p>
   </div>
   {% endif %}
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-4">
+      <div class="stat-card d-flex align-items-center gap-3">
+        <span class="stat-icon" style="background: var(--brand-light); color: var(--brand-dark);"><i class="bi bi-journal-check"></i></span>
+        <div>
+          <div class="stat-value">{{ stats.total_bookings }}</div>
+          <div class="stat-label">Total bookings</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4">
+      <div class="stat-card d-flex align-items-center gap-3">
+        <span class="stat-icon" style="background:#dff3ea; color:#0e7a53;"><i class="bi bi-check-circle-fill"></i></span>
+        <div>
+          <div class="stat-value">{{ stats.completed_bookings }}</div>
+          <div class="stat-label">Completed trips</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-4">
+      <div class="stat-card d-flex align-items-center gap-3">
+        <span class="stat-icon" style="background:#e6f0ff; color:#1b53c4;"><i class="bi bi-calendar-heart"></i></span>
+        <div>
+          <div class="stat-value" style="font-size:1.15rem;">{{ stats.member_since.strftime('%b %Y') }}</div>
+          <div class="stat-label">Member since</div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h5 class="mb-0">Recent Bookings</h5>
     <a href="{{ url_for('patient_history') }}" class="small text-brand text-decoration-none">View all &rarr;</a>
   </div>
-  <div class="card">
+  <div class="card mb-4">
     <div class="table-responsive">
       <table class="table table-clean mb-0">
         <thead><tr><th>#</th><th>Date</th><th>Type</th><th>Address</th><th>Status</th><th></th></tr></thead>
@@ -57,6 +99,11 @@
         </tbody>
       </table>
     </div>
+  </div>
+
+  <div class="alert alert-light border small d-flex align-items-center gap-2 mb-0">
+    <i class="bi bi-telephone-fill text-brand"></i>
+    In a life-threatening emergency and can't wait? Call <strong>1122</strong> directly.
   </div>
 </div>
 {% endblock %}

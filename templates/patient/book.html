@@ -38,7 +38,7 @@
           <div id="bookMap"></div>
         </div>
       </div>
-      <p class="small text-muted mt-2"><i class="bi bi-info-circle me-1"></i>Drag the red marker to fine-tune your exact pickup point.</p>
+      <p class="small text-muted mt-2"><i class="bi bi-info-circle me-1"></i>Drag the red marker, or search for your address on the right, to fine-tune your exact pickup point.</p>
     </div>
 
     <div class="col-lg-5">
@@ -50,10 +50,12 @@
 
           <div class="mb-3">
             <label class="form-label">Type of Emergency</label>
+            {% set preselected = request.args.get('type') if request.args.get('type') in EMERGENCY_TYPES else None %}
             <div class="emergency-picker">
               {% for key, info in EMERGENCY_TYPES.items() %}
-              <div class="emergency-choice tag-{{ info.color }} {% if loop.first %}active{% endif %}" data-value="{{ key }}">
-                <input class="form-check-input d-none" type="radio" name="emergency_type" value="{{ key }}" id="em_{{ key }}" {% if loop.first %}checked{% endif %}>
+              {% set is_selected = (key == preselected) if preselected else loop.first %}
+              <div class="emergency-choice tag-{{ info.color }} {% if is_selected %}active{% endif %}" data-value="{{ key }}">
+                <input class="form-check-input d-none" type="radio" name="emergency_type" value="{{ key }}" id="em_{{ key }}" {% if is_selected %}checked{% endif %}>
                 <label for="em_{{ key }}" style="cursor:pointer; display:block;">{{ info.label }}</label>
               </div>
               {% endfor %}
@@ -61,14 +63,17 @@
           </div>
 
           <div class="mb-3">
-            <label class="form-label">Pickup Address <span class="text-muted fw-normal">(optional label)</span></label>
+            <label class="form-label">Pickup Address</label>
             <div class="input-group">
-              <input type="text" name="address" id="addressInput" class="form-control" placeholder="e.g. House 12, Street 4, Landi Kotal">
+              <input type="text" name="address" id="addressInput" class="form-control" placeholder="Type an area, landmark, or full address (e.g. Landi Kotal)">
+              <button type="button" class="btn btn-outline-brand" id="searchAddressBtn" title="Search this address and move the pin there">
+                <i class="bi bi-search" id="searchAddressIcon"></i>
+              </button>
               <button type="button" class="btn btn-outline-brand" id="useCurrentLocationBtn" title="Fill with my current location">
                 <i class="bi bi-crosshair" id="useCurrentLocationIcon"></i>
               </button>
             </div>
-            <small class="text-muted" id="addressHelpText">Tap the crosshair to auto-fill this from your device's current location.</small>
+            <small class="text-muted" id="addressHelpText">If the map pin isn't on your real location (common on desktops without GPS), type your area here and press Enter or tap <i class="bi bi-search"></i> to jump the pin there — then fine-tune by dragging it.</small>
           </div>
           <div class="mb-3">
             <label class="form-label">Notes for the driver <span class="text-muted fw-normal">(optional)</span></label>
@@ -112,13 +117,20 @@ function showBookingForm(lat, lng) {
 
   if (!map) {
     map = L.map('bookMap');
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+    const satelliteLayer = L.layerGroup([
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+        maxZoom: 19
+      }),
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19
+      })
+    ]).addTo(map);
+    const streetsLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
       maxZoom: 19
-    }).addTo(map);
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 19
-    }).addTo(map);
+    });
+    L.control.layers({ 'Satellite': satelliteLayer, 'Streets': streetsLayer }).addTo(map);
     marker = L.marker([lat, lng], { draggable: true }).addTo(map);
     marker.on('dragend', function () {
       const pos = marker.getLatLng();
@@ -183,6 +195,64 @@ function setAddressHelp(text, isError) {
   el.classList.toggle('text-muted', !isError);
 }
 
+function searchAddress() {
+  const query = document.getElementById('addressInput').value.trim();
+  if (!query) {
+    setAddressHelp('Type an address or area name first.', true);
+    return;
+  }
+
+  const btn = document.getElementById('searchAddressBtn');
+  const icon = document.getElementById('searchAddressIcon');
+  btn.disabled = true;
+  icon.className = 'spinner-border spinner-border-sm';
+  setAddressHelp('Searching for that location...', false);
+
+  function trySearch(attempt) {
+    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&addressdetails=1&email=medrush.support@example.com`, {
+      headers: { 'Accept-Language': 'en' }
+    })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('status ' + r.status)); })
+      .then(function (results) {
+        if (results && results.length > 0) {
+          const lat = parseFloat(results[0].lat);
+          const lng = parseFloat(results[0].lon);
+          if (map && marker) {
+            marker.setLatLng([lat, lng]);
+            map.setView([lat, lng], 15);
+          }
+          setLocation(lat, lng);
+          document.getElementById('addressInput').value = results[0].display_name;
+          setAddressHelp('Pin moved to the matching location. Drag it to fine-tune if needed.', false);
+        } else {
+          setAddressHelp("Couldn't find that address. Try a nearby landmark or a more general area name, or drag the pin manually.", true);
+        }
+      })
+      .catch(function () {
+        if (attempt < 2) {
+          setTimeout(function () { trySearch(attempt + 1); }, 800);
+          return;
+        }
+        setAddressHelp("Couldn't reach the address search service right now. Please drag the pin manually instead.", true);
+      })
+      .finally(function () {
+        if (attempt >= 2) {
+          btn.disabled = false;
+          icon.className = 'bi bi-search';
+        }
+      });
+  }
+  trySearch(1);
+}
+
+document.getElementById('searchAddressBtn').addEventListener('click', searchAddress);
+document.getElementById('addressInput').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    searchAddress();
+  }
+});
+
 document.getElementById('useCurrentLocationBtn').addEventListener('click', function () {
   if (!navigator.geolocation) {
     setAddressHelp("Your browser doesn't support location services.", true);
@@ -208,23 +278,36 @@ document.getElementById('useCurrentLocationBtn').addEventListener('click', funct
 
       setAddressHelp('Looking up the address...', false);
 
-      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`)
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (data) {
-          if (data && data.display_name) {
-            document.getElementById('addressInput').value = data.display_name;
-            setAddressHelp('Address filled from your current location.', false);
-          } else {
-            setAddressHelp("Couldn't look up an address for this location. The map pin has still been updated — feel free to type a label manually.", true);
-          }
+      function tryReverseGeocode(attempt) {
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&email=medrush.support@example.com`, {
+          headers: { 'Accept-Language': 'en' }
         })
-        .catch(function () {
-          setAddressHelp("Couldn't look up an address right now. The map pin has still been updated — feel free to type a label manually.", true);
-        })
-        .finally(function () {
-          btn.disabled = false;
-          icon.className = 'bi bi-crosshair';
-        });
+          .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('status ' + r.status)); })
+          .then(function (data) {
+            if (data && data.display_name) {
+              document.getElementById('addressInput').value = data.display_name;
+              setAddressHelp('Address filled from your current location.', false);
+            } else {
+              setAddressHelp("No address is on record for this exact spot. The map pin has still been updated — feel free to type a label manually.", true);
+            }
+          })
+          .catch(function () {
+            if (attempt < 2) {
+              // Nominatim's free API can be flaky under a single-attempt
+              // request -- one quick retry clears up most transient failures.
+              setTimeout(function () { tryReverseGeocode(attempt + 1); }, 800);
+              return;
+            }
+            setAddressHelp("Couldn't look up an address right now. The map pin has still been updated — feel free to type a label manually.", true);
+          })
+          .finally(function () {
+            if (attempt >= 2) {
+              btn.disabled = false;
+              icon.className = 'bi bi-crosshair';
+            }
+          });
+      }
+      tryReverseGeocode(1);
     },
     function (err) {
       let text = "Couldn't access your location.";

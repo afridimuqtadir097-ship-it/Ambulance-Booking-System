@@ -1,9 +1,17 @@
 {% extends "base.html" %}
 {% block title %}My Profile — MedRush{% endblock %}
 {% block content %}
+{% set banner_img = {
+  'driver': 'https://images.unsplash.com/photo-1782835431362-13ab0d03b572',
+  'admin': 'https://images.unsplash.com/photo-1526628953301-3e589a6a8b74',
+}.get(current_user.role, 'https://images.unsplash.com/photo-1758691462071-757bca955439') %}
+<div class="page-banner page-banner-sm" style="background-image:url('{{ banner_img }}?auto=format&fit=crop&w=1600&q=80');">
+  <div class="container page-banner-content">
+    <h3 class="mb-1">My Profile</h3>
+    <p>Manage your account details.</p>
+  </div>
+</div>
 <div class="container py-4">
-  <h3 class="section-title mb-1">My Profile</h3>
-  <p class="text-muted mb-4">Manage your account details.</p>
 
   <div class="row g-4">
     <div class="col-lg-4">

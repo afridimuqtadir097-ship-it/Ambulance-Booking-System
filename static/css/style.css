@@ -305,6 +305,37 @@ h1, h2, h3, h4, h5, .brand-icon { font-weight: 700; }
   .impact-banner h2 { font-size: 1.7rem; }
 }
 
+/* ---- Portal page header banners (dashboard/book/history/etc) ---- */
+.page-banner {
+  position: relative;
+  background-size: cover;
+  background-position: center;
+  padding: 2.1rem 0 2.5rem;
+  margin-bottom: 1.75rem;
+  color: #fff;
+  overflow: hidden;
+}
+.page-banner::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(100deg, rgba(15,12,24,0.92) 0%, rgba(20,15,30,0.72) 55%, rgba(20,15,30,0.4) 100%);
+}
+.page-banner-content { position: relative; z-index: 1; }
+.page-banner h3 { color: #fff; font-weight: 800; margin-bottom: 0.25rem; }
+.page-banner p { color: rgba(255,255,255,0.82); margin-bottom: 0; }
+.page-banner-sm { padding: 1.5rem 0 1.9rem; margin-bottom: 1.25rem; }
+.page-banner-sm h3 { font-size: 1.3rem; }
+@media (max-width: 576px) {
+  .page-banner { padding: 1.6rem 0 2rem; }
+  .page-banner h3 { font-size: 1.25rem; }
+}
+
+/* Quick-book tiles on the patient homepage/dashboard: unlike the booking
+   form's single-choice picker, every tile here is a live navigation link,
+   so it stays lifted/colourful all the time rather than only on :hover. */
+.quick-emergency-picker .emergency-choice { cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease; }
+.quick-emergency-picker .emergency-choice:hover { transform: translateY(-3px); box-shadow: var(--shadow-soft); }
+
 /* ---- Map ---- */
 .map-box { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); }
 #bookMap, #trackMap, #driverMap { height: 420px; width: 100%; }

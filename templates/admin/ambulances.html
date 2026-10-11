@@ -1,14 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Manage Ambulances — MedRush{% endblock %}
 {% block content %}
-<div class="container py-4">
-  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+<div class="page-banner page-banner-sm" style="background-image:url('https://images.unsplash.com/photo-1782835431461-8c0c5898b54b?auto=format&fit=crop&w=1600&q=80');">
+  <div class="container page-banner-content d-flex justify-content-between align-items-center flex-wrap gap-2">
     <div>
-      <h3 class="section-title mb-1">Ambulance Fleet</h3>
-      <p class="text-muted mb-0">Manage vehicles and driver assignments.</p>
+      <h3 class="mb-1">Ambulance Fleet</h3>
+      <p>Manage vehicles and driver assignments.</p>
     </div>
     <button class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#addAmbulanceModal"><i class="bi bi-plus-circle me-2"></i>Add Ambulance</button>
   </div>
+</div>
+<div class="container py-4">
 
   <div class="card">
     <div class="table-responsive">
@@ -19,7 +21,19 @@
           <tr>
             <td class="fw-semibold">{{ a.vehicle_number }}</td>
             <td><span class="tag {{ 'tag-purple' if a.vehicle_type == 'ALS' else 'tag-blue' }}">{{ VEHICLE_TYPES.get(a.vehicle_type, a.vehicle_type) }}</span></td>
-            <td>{{ a.driver.name if a.driver else '—' }}</td>
+            <td>
+              <form method="POST" action="{{ url_for('admin_assign_driver', ambulance_id=a.id) }}" class="d-flex gap-1 align-items-center">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <select name="driver_id" class="form-select form-select-sm" style="min-width:160px;" onchange="this.form.requestSubmit()">
+                  <option value="">Unassigned</option>
+                  {% for d in all_drivers %}
+                    {% if not d.ambulance or d.ambulance.id == a.id %}
+                    <option value="{{ d.id }}" {% if a.driver_id == d.id %}selected{% endif %}>{{ d.name }}</option>
+                    {% endif %}
+                  {% endfor %}
+                </select>
+              </form>
+            </td>
             <td><span class="badge-status badge-{{ a.status }}">{{ a.status }}</span></td>
             <td class="small text-muted">{% if a.lat and a.lng %}{{ '%.4f'|format(a.lat) }}, {{ '%.4f'|format(a.lng) }}{% else %}Not shared{% endif %}</td>
             <td>
@@ -68,6 +82,9 @@
               <option value="{{ d.id }}">{{ d.name }} ({{ d.email }})</option>
               {% endfor %}
             </select>
+            {% if not unassigned_drivers %}
+            <small class="text-muted">Every registered driver is already assigned to a vehicle. You can add this ambulance unassigned for now, or reassign a driver from the fleet table — just pick a different vehicle for them there and this one opens up.</small>
+            {% endif %}
           </div>
         </div>
         <div class="modal-footer">
